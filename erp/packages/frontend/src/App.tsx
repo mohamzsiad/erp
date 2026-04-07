@@ -1,0 +1,124 @@
+import { lazy, Suspense } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
+import { ProtectedRoute } from './router/ProtectedRoute';
+import AppLayout from './components/layout/AppLayout';
+
+// ── Lazy-loaded pages ─────────────────────────────────────────────────────────
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const NotFoundPage = lazy(() => import('./pages/errors/NotFoundPage'));
+const ForbiddenPage = lazy(() => import('./pages/errors/ForbiddenPage'));
+
+// ── Procurement (will be populated in Prompt 3) ───────────────────────────────
+const ProcurementPlaceholder = () => (
+  <div className="p-6">
+    <h2 className="text-lg font-semibold text-gray-700">Procurement Module</h2>
+    <p className="text-gray-500 text-sm mt-1">This module will be built in Prompt 3.</p>
+  </div>
+);
+
+// ── Inventory (Prompt 5) ──────────────────────────────────────────────────────
+const InventoryPlaceholder = () => (
+  <div className="p-6">
+    <h2 className="text-lg font-semibold text-gray-700">Inventory Module</h2>
+    <p className="text-gray-500 text-sm mt-1">This module will be built in Prompt 5.</p>
+  </div>
+);
+
+// ── Finance (Prompt 7) ────────────────────────────────────────────────────────
+const FinancePlaceholder = () => (
+  <div className="p-6">
+    <h2 className="text-lg font-semibold text-gray-700">Finance Module</h2>
+    <p className="text-gray-500 text-sm mt-1">This module will be built in Prompt 7.</p>
+  </div>
+);
+
+// ── Admin (Prompt 9) ──────────────────────────────────────────────────────────
+const AdminPlaceholder = () => (
+  <div className="p-6">
+    <h2 className="text-lg font-semibold text-gray-700">Administration</h2>
+    <p className="text-gray-500 text-sm mt-1">This module will be built in Prompt 9.</p>
+  </div>
+);
+
+// ── Spinner fallback ──────────────────────────────────────────────────────────
+const PageSpinner = () => (
+  <div className="flex items-center justify-center h-64">
+    <Loader2 size={28} className="animate-spin text-[#1F4E79]" />
+  </div>
+);
+
+export default function App() {
+  return (
+    <Suspense fallback={<PageSpinner />}>
+      <Routes>
+        {/* Public */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/403" element={<ForbiddenPage />} />
+
+        {/* Protected shell */}
+        <Route
+          element={
+            <ProtectedRoute>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+
+          {/* Procurement */}
+          <Route
+            path="/procurement/*"
+            element={
+              <ProtectedRoute requireModule="PROCUREMENT">
+                <ProcurementPlaceholder />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Inventory */}
+          <Route
+            path="/inventory/*"
+            element={
+              <ProtectedRoute requireModule="INVENTORY">
+                <InventoryPlaceholder />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Finance */}
+          <Route
+            path="/finance/*"
+            element={
+              <ProtectedRoute requireModule="FINANCE">
+                <FinancePlaceholder />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Admin */}
+          <Route
+            path="/admin/*"
+            element={
+              <ProtectedRoute
+                module="CORE"
+                resource="CONFIG"
+                action="CONFIGURE"
+              >
+                <AdminPlaceholder />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* 404 inside shell */}
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+
+        {/* Root redirect */}
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </Suspense>
+  );
+}

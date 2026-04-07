@@ -1,0 +1,1234 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// CloudERP — Prisma Schema
+// Database: PostgreSQL 16
+// Naming: camelCase models → snake_case tables via @@map
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ENUMS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum Module {
+  CORE
+  PROCUREMENT
+  INVENTORY
+  FINANCE
+}
+
+enum PermissionAction {
+  VIEW
+  CREATE
+  EDIT
+  APPROVE
+  DELETE
+  VOID
+  CONFIGURE
+}
+
+enum LocationType {
+  BRANCH
+  WAREHOUSE
+  OFFICE
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+enum ShipmentMode {
+  AIR
+  SEA
+  LAND
+  NA
+}
+
+enum MrlStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CONVERTED
+  CLOSED
+}
+
+enum PrlStatus {
+  DRAFT
+  APPROVED
+  ENQUIRY_SENT
+  PO_CREATED
+  SHORT_CLOSED
+  CLOSED
+}
+
+enum PoStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PARTIAL
+  RECEIVED
+  INVOICED
+  CLOSED
+  CANCELLED
+}
+
+enum GrnStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum ItemStatus {
+  ACTIVE
+  INACTIVE
+  OBSOLETE
+  DEAD
+}
+
+enum TrackingType {
+  NONE
+  SERIAL
+  BATCH
+  LOT
+}
+
+enum StockDocStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+  APPROVED
+  SUBMITTED
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum JournalStatus {
+  DRAFT
+  POSTED
+  REVERSED
+}
+
+enum ApInvoiceStatus {
+  DRAFT
+  APPROVED
+  PAID
+  PARTIAL
+  CANCELLED
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CHEQUE
+  CASH
+}
+
+enum CostCodeType {
+  COST_CENTER
+  PROJECT
+  DEPARTMENT
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CORE SCHEMA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model Company {
+  id              String    @id @default(cuid())
+  code            String    @unique @db.VarChar(20)
+  name            String    @db.VarChar(200)
+  baseCurrency    String    @db.VarChar(3)
+  modulesEnabled  Json      @default("[\"PROCUREMENT\",\"INVENTORY\",\"FINANCE\"]")
+  timezone        String    @default("UTC") @db.VarChar(50)
+  fiscalYearStart Int       @default(1)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  users               User[]
+  roles               Role[]
+  locations           Location[]
+  docSequences        DocSequence[]
+  workflowConfigs     WorkflowConfig[]
+  suppliers           Supplier[]
+  materialRequisitions MaterialRequisition[]
+  purchaseRequisitions PurchaseRequisition[]
+  purchaseEnquiries   PurchaseEnquiry[]
+  purchaseQuotations  PurchaseQuotation[]
+  purchaseOrders      PurchaseOrder[]
+  items               Item[]
+  itemCategories      ItemCategory[]
+  uoms                Uom[]
+  warehouses          Warehouse[]
+  grnHeaders          GrnHeader[]
+  stockIssues         StockIssue[]
+  stockTransfers      StockTransfer[]
+  stockAdjustments    StockAdjustment[]
+  adjustmentReasons   AdjustmentReason[]
+  glAccounts          GlAccount[]
+  costCenters         CostCenter[]
+  costCodes           CostCode[]
+  journalEntries      JournalEntry[]
+  apInvoices          ApInvoice[]
+  apPayments          ApPayment[]
+  arInvoices          ArInvoice[]
+  arReceipts          ArReceipt[]
+  budgets             Budget[]
+  currencies          Currency[]
+
+  @@map("companies")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  companyId    String
+  email        String
+  passwordHash String    @db.VarChar(255)
+  firstName    String    @db.VarChar(100)
+  lastName     String    @db.VarChar(100)
+  roleId       String
+  locationId   String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Relations
+  company       Company        @relation(fields: [companyId], references: [id])
+  role          Role           @relation(fields: [roleId], references: [id])
+  location      Location?      @relation(fields: [locationId], references: [id])
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+
+  @@unique([companyId, email])
+  @@index([companyId])
+  @@map("users")
+}
+
+model RefreshToken {
+  id          String    @id @default(cuid())
+  userId      String
+  tokenHash   String    @unique @db.VarChar(255)
+  deviceInfo  String?   @db.VarChar(255)
+  ipAddress   String?   @db.VarChar(45)
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Role {
+  id          String    @id @default(cuid())
+  companyId   String
+  name        String    @db.VarChar(100)
+  description String?   @db.VarChar(255)
+  isSystem    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  // Relations
+  company     Company      @relation(fields: [companyId], references: [id])
+  permissions Permission[]
+  users       User[]
+
+  @@unique([companyId, name])
+  @@map("roles")
+}
+
+model Permission {
+  id       String           @id @default(cuid())
+  roleId   String
+  module   Module
+  resource String           @db.VarChar(50)
+  action   PermissionAction
+  createdAt DateTime        @default(now())
+
+  role  Role  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, module, resource, action])
+  @@index([roleId])
+  @@map("permissions")
+}
+
+model Location {
+  id        String       @id @default(cuid())
+  companyId String
+  code      String       @db.VarChar(20)
+  name      String       @db.VarChar(200)
+  type      LocationType
+  address   String?      @db.Text
+  isActive  Boolean      @default(true)
+
+  // Relations
+  company              Company               @relation(fields: [companyId], references: [id])
+  users                User[]
+  warehouses           Warehouse[]
+  materialRequisitions MaterialRequisition[]
+  purchaseRequisitions PurchaseRequisition[]
+  poShipTo             PurchaseOrder[]       @relation("PoShipToLocation")
+  grnHeaders           GrnHeader[]
+
+  @@unique([companyId, code])
+  @@map("locations")
+}
+
+model Currency {
+  id        String  @id @default(cuid())
+  companyId String
+  code      String  @db.VarChar(3)
+  name      String  @db.VarChar(100)
+  symbol    String  @db.VarChar(5)
+  isBase    Boolean @default(false)
+
+  company       Company        @relation(fields: [companyId], references: [id])
+  exchangeRates ExchangeRate[]
+  purchaseOrders PurchaseOrder[]
+  purchaseQuotations PurchaseQuotation[]
+  glAccounts    GlAccount[]
+
+  @@unique([companyId, code])
+  @@map("currencies")
+}
+
+model ExchangeRate {
+  id         String   @id @default(cuid())
+  currencyId String
+  rateDate   DateTime @db.Date
+  rate       Decimal  @db.Decimal(18, 6)
+
+  currency Currency @relation(fields: [currencyId], references: [id])
+
+  @@unique([currencyId, rateDate])
+  @@index([currencyId, rateDate])
+  @@map("exchange_rates")
+}
+
+model DocSequence {
+  id        String  @id @default(cuid())
+  companyId String
+  module    String  @db.VarChar(20)
+  docType   String  @db.VarChar(20)
+  prefix    String  @db.VarChar(10)
+  nextNo    Int     @default(1)
+  padLength Int     @default(6)
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, module, docType])
+  @@map("doc_sequences")
+}
+
+model WorkflowConfig {
+  id               String  @id @default(cuid())
+  companyId        String
+  module           String  @db.VarChar(20)
+  docType          String  @db.VarChar(20)
+  levels           Json
+  escalationHours  Int     @default(24)
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, module, docType])
+  @@map("workflow_configs")
+}
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  tableName String      @db.VarChar(100)
+  recordId  String      @db.VarChar(50)
+  userId    String?
+  action    AuditAction
+  oldValues Json?
+  newValues Json?
+  ipAddress String?     @db.VarChar(45)
+  createdAt DateTime    @default(now())
+
+  user  User?  @relation(fields: [userId], references: [id])
+
+  @@index([tableName, recordId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   @db.VarChar(50)
+  title     String   @db.VarChar(200)
+  message   String   @db.Text
+  docType   String?  @db.VarChar(20)
+  docId     String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PROCUREMENT SCHEMA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model Supplier {
+  id               String       @id @default(cuid())
+  companyId        String
+  code             String       @db.VarChar(20)
+  name             String       @db.VarChar(200)
+  shortName        String       @db.VarChar(100)
+  controlAccountId String?
+  creditDays       Int          @default(0)
+  creditAmount     Decimal      @default(0) @db.Decimal(18, 3)
+  parentSupplierId String?
+  shipmentMode     ShipmentMode @default(NA)
+  isTdsApplicable  Boolean      @default(false)
+  isTdsParty       Boolean      @default(false)
+  isActive         Boolean      @default(true)
+  isParentSupplier Boolean      @default(false)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  company         Company              @relation(fields: [companyId], references: [id])
+  parentSupplier  Supplier?            @relation("SupplierParent", fields: [parentSupplierId], references: [id])
+  childSuppliers  Supplier[]           @relation("SupplierParent")
+  bankDetails     SupplierBankDetail[]
+  contacts        SupplierContact[]
+  purchaseOrders  PurchaseOrder[]
+  purchaseQuotations PurchaseQuotation[]
+  grnHeaders      GrnHeader[]
+  apInvoices      ApInvoice[]
+  apPayments      ApPayment[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@map("suppliers")
+}
+
+model SupplierBankDetail {
+  id         String  @id @default(cuid())
+  supplierId String
+  bankName   String  @db.VarChar(200)
+  accountNo  String  @db.VarChar(50)
+  iban       String? @db.VarChar(50)
+  swiftCode  String? @db.VarChar(20)
+  isActive   Boolean @default(true)
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@map("supplier_bank_details")
+}
+
+model SupplierContact {
+  id          String  @id @default(cuid())
+  supplierId  String
+  name        String  @db.VarChar(100)
+  designation String? @db.VarChar(100)
+  email       String? @db.VarChar(200)
+  phone       String? @db.VarChar(30)
+  isPrimary   Boolean @default(false)
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@map("supplier_contacts")
+}
+
+model MaterialRequisition {
+  id           String    @id @default(cuid())
+  companyId    String
+  docNo        String    @db.VarChar(30)
+  docDate      DateTime  @db.Date
+  locationId   String
+  chargeCodeId String
+  deliveryDate DateTime  @db.Date
+  remarks      String?   @db.Text
+  status       MrlStatus @default(DRAFT)
+  createdById  String
+  approvedById String?
+  approvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  company     Company   @relation(fields: [companyId], references: [id])
+  location    Location  @relation(fields: [locationId], references: [id])
+  chargeCode  CostCode  @relation(fields: [chargeCodeId], references: [id])
+  lines       MrlLine[]
+
+  @@unique([companyId, docNo])
+  @@index([companyId, status])
+  @@map("material_requisitions")
+}
+
+model MrlLine {
+  id           String   @id @default(cuid())
+  mrlId        String
+  itemId       String
+  grade1       String?  @db.VarChar(50)
+  grade2       String?  @db.VarChar(50)
+  uomId        String
+  freeStock    Decimal  @default(0) @db.Decimal(18, 3)
+  requestedQty Decimal  @db.Decimal(18, 3)
+  approvedQty  Decimal  @default(0) @db.Decimal(18, 3)
+  approxPrice  Decimal  @default(0) @db.Decimal(18, 3)
+  lineNo       Int
+
+  mrl  MaterialRequisition @relation(fields: [mrlId], references: [id], onDelete: Cascade)
+  item Item                @relation(fields: [itemId], references: [id])
+  uom  Uom                 @relation(fields: [uomId], references: [id])
+
+  @@index([mrlId])
+  @@map("mrl_lines")
+}
+
+model PurchaseRequisition {
+  id           String    @id @default(cuid())
+  companyId    String
+  docNo        String    @db.VarChar(30)
+  docDate      DateTime  @db.Date
+  locationId   String
+  chargeCodeId String
+  deliveryDate DateTime  @db.Date
+  remarks      String?   @db.Text
+  status       PrlStatus @default(DRAFT)
+  mrlId        String?
+  createdById  String
+  approvedById String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  company    Company  @relation(fields: [companyId], references: [id])
+  location   Location @relation(fields: [locationId], references: [id])
+  chargeCode CostCode @relation(fields: [chargeCodeId], references: [id])
+  lines      PrlLine[]
+  enquiries  PurchaseEnquiry[]
+
+  @@unique([companyId, docNo])
+  @@index([companyId, status])
+  @@map("purchase_requisitions")
+}
+
+model PrlLine {
+  id           String  @id @default(cuid())
+  prlId        String
+  itemId       String
+  grade1       String? @db.VarChar(50)
+  grade2       String? @db.VarChar(50)
+  uomId        String
+  freeStock    Decimal @default(0) @db.Decimal(18, 3)
+  requestedQty Decimal @db.Decimal(18, 3)
+  approvedQty  Decimal @default(0) @db.Decimal(18, 3)
+  approxPrice  Decimal @default(0) @db.Decimal(18, 3)
+  chargeCodeId String
+  lineNo       Int
+
+  prl        PurchaseRequisition @relation(fields: [prlId], references: [id], onDelete: Cascade)
+  item       Item                @relation(fields: [itemId], references: [id])
+  uom        Uom                 @relation(fields: [uomId], references: [id])
+  chargeCode CostCode            @relation(fields: [chargeCodeId], references: [id])
+
+  @@index([prlId])
+  @@map("prl_lines")
+}
+
+model PurchaseEnquiry {
+  id          String   @id @default(cuid())
+  companyId   String
+  docNo       String   @db.VarChar(30)
+  docDate     DateTime @db.Date
+  prlId       String?
+  status      String   @default("DRAFT") @db.VarChar(20)
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company    Company              @relation(fields: [companyId], references: [id])
+  prl        PurchaseRequisition? @relation(fields: [prlId], references: [id])
+  quotations PurchaseQuotation[]
+
+  @@unique([companyId, docNo])
+  @@map("purchase_enquiries")
+}
+
+model PurchaseQuotation {
+  id           String   @id @default(cuid())
+  companyId    String
+  docNo        String   @db.VarChar(30)
+  supplierId   String
+  enquiryId    String?
+  validityDate DateTime @db.Date
+  currencyId   String
+  paymentTerms String?  @db.VarChar(100)
+  status       String   @default("DRAFT") @db.VarChar(20)
+  totalAmount  Decimal  @default(0) @db.Decimal(18, 3)
+  createdById  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company  Company         @relation(fields: [companyId], references: [id])
+  supplier Supplier        @relation(fields: [supplierId], references: [id])
+  enquiry  PurchaseEnquiry? @relation(fields: [enquiryId], references: [id])
+  currency Currency        @relation(fields: [currencyId], references: [id])
+
+  @@unique([companyId, docNo])
+  @@map("purchase_quotations")
+}
+
+model PurchaseOrder {
+  id               String   @id @default(cuid())
+  companyId        String
+  docNo            String   @db.VarChar(30)
+  docDate          DateTime @db.Date
+  supplierId       String
+  currencyId       String
+  exchangeRate     Decimal  @default(1) @db.Decimal(18, 6)
+  paymentTerms     String?  @db.VarChar(100)
+  incoterms        String?  @db.VarChar(50)
+  deliveryDate     DateTime? @db.Date
+  shipToLocationId String?
+  status           PoStatus @default(DRAFT)
+  createdById      String
+  approvedById     String?
+  totalAmount      Decimal  @default(0) @db.Decimal(18, 3)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  company        Company      @relation(fields: [companyId], references: [id])
+  supplier       Supplier     @relation(fields: [supplierId], references: [id])
+  currency       Currency     @relation(fields: [currencyId], references: [id])
+  shipToLocation Location?    @relation("PoShipToLocation", fields: [shipToLocationId], references: [id])
+  lines          PoLine[]
+  grnHeaders     GrnHeader[]
+  apInvoices     ApInvoice[]
+
+  @@unique([companyId, docNo])
+  @@index([companyId, status])
+  @@index([supplierId])
+  @@map("purchase_orders")
+}
+
+model PoLine {
+  id           String  @id @default(cuid())
+  poId         String
+  itemId       String
+  uomId        String
+  orderedQty   Decimal @db.Decimal(18, 3)
+  receivedQty  Decimal @default(0) @db.Decimal(18, 3)
+  invoicedQty  Decimal @default(0) @db.Decimal(18, 3)
+  unitPrice    Decimal @db.Decimal(18, 3)
+  discountPct  Decimal @default(0) @db.Decimal(5, 2)
+  taxPct       Decimal @default(0) @db.Decimal(5, 2)
+  netAmount    Decimal @db.Decimal(18, 3)
+  chargeCodeId String
+  lineNo       Int
+
+  po         PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  item       Item          @relation(fields: [itemId], references: [id])
+  uom        Uom           @relation(fields: [uomId], references: [id])
+  chargeCode CostCode      @relation(fields: [chargeCodeId], references: [id])
+  grnLines   GrnLine[]
+
+  @@index([poId])
+  @@map("po_lines")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INVENTORY SCHEMA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model ItemCategory {
+  id        String  @id @default(cuid())
+  companyId String
+  code      String  @db.VarChar(20)
+  name      String  @db.VarChar(100)
+  parentId  String?
+
+  company  Company       @relation(fields: [companyId], references: [id])
+  parent   ItemCategory? @relation("CategoryParent", fields: [parentId], references: [id])
+  children ItemCategory[] @relation("CategoryParent")
+  items    Item[]
+
+  @@unique([companyId, code])
+  @@map("item_categories")
+}
+
+model Uom {
+  id        String @id @default(cuid())
+  companyId String
+  code      String @db.VarChar(10)
+  name      String @db.VarChar(50)
+  symbol    String @db.VarChar(10)
+
+  company           Company           @relation(fields: [companyId], references: [id])
+  items             Item[]
+  mrlLines          MrlLine[]
+  prlLines          PrlLine[]
+  poLines           PoLine[]
+  stockIssueLines   StockIssueLine[]
+  stockTransferLines StockTransferLine[]
+  stockAdjustmentLines StockAdjustmentLine[]
+
+  @@unique([companyId, code])
+  @@map("uoms")
+}
+
+model Item {
+  id               String       @id @default(cuid())
+  companyId        String
+  code             String       @db.VarChar(30)
+  description      String       @db.VarChar(300)
+  shortDescription String?      @db.VarChar(100)
+  categoryId       String?
+  uomId            String
+  grade1Options    Json         @default("[]")
+  grade2Options    Json         @default("[]")
+  reorderLevel     Decimal      @default(0) @db.Decimal(18, 3)
+  reorderQty       Decimal      @default(0) @db.Decimal(18, 3)
+  minStock         Decimal      @default(0) @db.Decimal(18, 3)
+  maxStock         Decimal      @default(0) @db.Decimal(18, 3)
+  standardCost     Decimal      @default(0) @db.Decimal(18, 3)
+  trackingType     TrackingType @default(NONE)
+  status           ItemStatus   @default(ACTIVE)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  company           Company               @relation(fields: [companyId], references: [id])
+  category          ItemCategory?         @relation(fields: [categoryId], references: [id])
+  uom               Uom                   @relation(fields: [uomId], references: [id])
+  stockBalances     StockBalance[]
+  mrlLines          MrlLine[]
+  prlLines          PrlLine[]
+  poLines           PoLine[]
+  grnLines          GrnLine[]
+  stockIssueLines   StockIssueLine[]
+  stockTransferLines StockTransferLine[]
+  stockAdjustmentLines StockAdjustmentLine[]
+
+  @@unique([companyId, code])
+  @@index([companyId, status])
+  @@map("items")
+}
+
+model Warehouse {
+  id        String  @id @default(cuid())
+  companyId String
+  code      String  @db.VarChar(20)
+  name      String  @db.VarChar(200)
+  locationId String
+  isActive  Boolean @default(true)
+
+  company           Company             @relation(fields: [companyId], references: [id])
+  location          Location            @relation(fields: [locationId], references: [id])
+  bins              Bin[]
+  stockBalances     StockBalance[]
+  grnHeaders        GrnHeader[]
+  stockIssues       StockIssue[]
+  stockTransfersFrom StockTransfer[]    @relation("TransferFrom")
+  stockTransfersTo   StockTransfer[]    @relation("TransferTo")
+  stockAdjustments  StockAdjustment[]
+
+  @@unique([companyId, code])
+  @@map("warehouses")
+}
+
+model Bin {
+  id          String  @id @default(cuid())
+  warehouseId String
+  code        String  @db.VarChar(20)
+  name        String  @db.VarChar(100)
+  capacity    Decimal? @db.Decimal(18, 3)
+
+  warehouse         Warehouse             @relation(fields: [warehouseId], references: [id])
+  stockBalances     StockBalance[]
+  grnLines          GrnLine[]
+  stockIssueLines   StockIssueLine[]
+  stockTransferLinesFrom StockTransferLine[] @relation("TransferLineFrom")
+  stockTransferLinesTo   StockTransferLine[] @relation("TransferLineTo")
+  stockAdjustmentLines StockAdjustmentLine[]
+
+  @@unique([warehouseId, code])
+  @@map("bins")
+}
+
+model StockBalance {
+  id          String   @id @default(cuid())
+  itemId      String
+  warehouseId String
+  binId       String?
+  qtyOnHand   Decimal  @default(0) @db.Decimal(18, 3)
+  qtyReserved Decimal  @default(0) @db.Decimal(18, 3)
+  avgCost     Decimal  @default(0) @db.Decimal(18, 6)
+  updatedAt   DateTime @updatedAt
+
+  item      Item      @relation(fields: [itemId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  bin       Bin?      @relation(fields: [binId], references: [id])
+
+  @@unique([itemId, warehouseId, binId])
+  @@index([itemId])
+  @@index([warehouseId])
+  @@map("stock_balances")
+}
+
+model StockMovement {
+  id              String   @id @default(cuid())
+  itemId          String
+  warehouseId     String
+  binId           String?
+  qty             Decimal  @db.Decimal(18, 3)
+  avgCost         Decimal  @db.Decimal(18, 6)
+  balanceAfter    Decimal  @db.Decimal(18, 3)
+  transactionType String   @db.VarChar(20)
+  sourceDocId     String
+  sourceDocNo     String   @db.VarChar(30)
+  companyId       String
+  userId          String
+  createdAt       DateTime @default(now())
+
+  @@index([itemId, warehouseId, createdAt])
+  @@index([sourceDocId])
+  @@map("stock_movements")
+}
+
+model GrnHeader {
+  id          String    @id @default(cuid())
+  companyId   String
+  docNo       String    @db.VarChar(30)
+  poId        String?
+  supplierId  String
+  warehouseId String
+  locationId  String?
+  docDate     DateTime  @db.Date
+  remarks     String?   @db.Text
+  status      GrnStatus @default(DRAFT)
+  postedAt    DateTime?
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company    Company       @relation(fields: [companyId], references: [id])
+  po         PurchaseOrder? @relation(fields: [poId], references: [id])
+  supplier   Supplier      @relation(fields: [supplierId], references: [id])
+  warehouse  Warehouse     @relation(fields: [warehouseId], references: [id])
+  location   Location?     @relation(fields: [locationId], references: [id])
+  lines      GrnLine[]
+  apInvoices ApInvoice[]
+
+  @@unique([companyId, docNo])
+  @@index([companyId, status])
+  @@map("grn_headers")
+}
+
+model GrnLine {
+  id           String    @id @default(cuid())
+  grnId        String
+  itemId       String
+  poLineId     String?
+  receivedQty  Decimal   @db.Decimal(18, 3)
+  acceptedQty  Decimal   @db.Decimal(18, 3)
+  rejectedQty  Decimal   @default(0) @db.Decimal(18, 3)
+  binId        String?
+  lotNo        String?   @db.VarChar(50)
+  batchNo      String?   @db.VarChar(50)
+  expiryDate   DateTime? @db.Date
+  lineNo       Int
+
+  grn    GrnHeader    @relation(fields: [grnId], references: [id], onDelete: Cascade)
+  item   Item         @relation(fields: [itemId], references: [id])
+  poLine PoLine?      @relation(fields: [poLineId], references: [id])
+  bin    Bin?         @relation(fields: [binId], references: [id])
+
+  @@index([grnId])
+  @@map("grn_lines")
+}
+
+model StockIssue {
+  id           String         @id @default(cuid())
+  companyId    String
+  docNo        String         @db.VarChar(30)
+  docDate      DateTime       @db.Date
+  warehouseId  String
+  chargeCodeId String
+  mrlId        String?
+  status       StockDocStatus @default(DRAFT)
+  remarks      String?        @db.Text
+  createdById  String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  company    Company          @relation(fields: [companyId], references: [id])
+  warehouse  Warehouse        @relation(fields: [warehouseId], references: [id])
+  chargeCode CostCode         @relation(fields: [chargeCodeId], references: [id])
+  lines      StockIssueLine[]
+
+  @@unique([companyId, docNo])
+  @@map("stock_issues")
+}
+
+model StockIssueLine {
+  id        String  @id @default(cuid())
+  issueId   String
+  itemId    String
+  binId     String?
+  issuedQty Decimal @db.Decimal(18, 3)
+  uomId     String
+  avgCost   Decimal @default(0) @db.Decimal(18, 6)
+  lineNo    Int
+
+  issue StockIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  item  Item       @relation(fields: [itemId], references: [id])
+  bin   Bin?       @relation(fields: [binId], references: [id])
+  uom   Uom        @relation(fields: [uomId], references: [id])
+
+  @@index([issueId])
+  @@map("stock_issue_lines")
+}
+
+model StockTransfer {
+  id              String         @id @default(cuid())
+  companyId       String
+  docNo           String         @db.VarChar(30)
+  docDate         DateTime       @db.Date
+  fromWarehouseId String
+  toWarehouseId   String
+  status          StockDocStatus @default(DRAFT)
+  remarks         String?        @db.Text
+  createdById     String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  company       Company             @relation(fields: [companyId], references: [id])
+  fromWarehouse Warehouse           @relation("TransferFrom", fields: [fromWarehouseId], references: [id])
+  toWarehouse   Warehouse           @relation("TransferTo", fields: [toWarehouseId], references: [id])
+  lines         StockTransferLine[]
+
+  @@unique([companyId, docNo])
+  @@map("stock_transfers")
+}
+
+model StockTransferLine {
+  id          String  @id @default(cuid())
+  transferId  String
+  itemId      String
+  fromBinId   String?
+  toBinId     String?
+  transferQty Decimal @db.Decimal(18, 3)
+  uomId       String
+  lineNo      Int
+
+  transfer StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  item     Item          @relation(fields: [itemId], references: [id])
+  fromBin  Bin?          @relation("TransferLineFrom", fields: [fromBinId], references: [id])
+  toBin    Bin?          @relation("TransferLineTo", fields: [toBinId], references: [id])
+  uom      Uom           @relation(fields: [uomId], references: [id])
+
+  @@index([transferId])
+  @@map("stock_transfer_lines")
+}
+
+model AdjustmentReason {
+  id        String @id @default(cuid())
+  companyId String
+  code      String @db.VarChar(20)
+  name      String @db.VarChar(100)
+
+  company     Company           @relation(fields: [companyId], references: [id])
+  adjustments StockAdjustment[]
+
+  @@unique([companyId, code])
+  @@map("adjustment_reasons")
+}
+
+model StockAdjustment {
+  id          String         @id @default(cuid())
+  companyId   String
+  docNo       String         @db.VarChar(30)
+  docDate     DateTime       @db.Date
+  warehouseId String
+  reasonId    String
+  status      StockDocStatus @default(DRAFT)
+  approvedById String?
+  createdById String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  company   Company               @relation(fields: [companyId], references: [id])
+  warehouse Warehouse             @relation(fields: [warehouseId], references: [id])
+  reason    AdjustmentReason      @relation(fields: [reasonId], references: [id])
+  lines     StockAdjustmentLine[]
+
+  @@unique([companyId, docNo])
+  @@map("stock_adjustments")
+}
+
+model StockAdjustmentLine {
+  id           String  @id @default(cuid())
+  adjustmentId String
+  itemId       String
+  binId        String?
+  systemQty    Decimal @db.Decimal(18, 3)
+  physicalQty  Decimal @db.Decimal(18, 3)
+  varianceQty  Decimal @db.Decimal(18, 3)
+  uomId        String
+  avgCost      Decimal @default(0) @db.Decimal(18, 6)
+  lineNo       Int
+
+  adjustment StockAdjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
+  item       Item            @relation(fields: [itemId], references: [id])
+  bin        Bin?            @relation(fields: [binId], references: [id])
+  uom        Uom             @relation(fields: [uomId], references: [id])
+
+  @@index([adjustmentId])
+  @@map("stock_adjustment_lines")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FINANCE SCHEMA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model GlAccount {
+  id          String      @id @default(cuid())
+  companyId   String
+  code        String      @db.VarChar(20)
+  name        String      @db.VarChar(200)
+  accountType AccountType
+  parentId    String?
+  isControl   Boolean     @default(false)
+  currencyId  String?
+  isActive    Boolean     @default(true)
+
+  company      Company      @relation(fields: [companyId], references: [id])
+  parent       GlAccount?   @relation("AccountParent", fields: [parentId], references: [id])
+  children     GlAccount[]  @relation("AccountParent")
+  currency     Currency?    @relation(fields: [currencyId], references: [id])
+  journalLines JournalLine[]
+
+  @@unique([companyId, code])
+  @@index([companyId, accountType])
+  @@map("gl_accounts")
+}
+
+model CostCenter {
+  id             String  @id @default(cuid())
+  companyId      String
+  code           String  @db.VarChar(20)
+  name           String  @db.VarChar(200)
+  parentId       String?
+  budgetHolderId String?
+  isActive       Boolean @default(true)
+
+  company      Company      @relation(fields: [companyId], references: [id])
+  parent       CostCenter?  @relation("CostCenterParent", fields: [parentId], references: [id])
+  children     CostCenter[] @relation("CostCenterParent")
+  costCodes    CostCode[]
+  journalLines JournalLine[]
+  budgets      Budget[]
+
+  @@unique([companyId, code])
+  @@map("cost_centers")
+}
+
+model CostCode {
+  id           String      @id @default(cuid())
+  companyId    String
+  code         String      @db.VarChar(20)
+  name         String      @db.VarChar(200)
+  costCenterId String?
+  type         CostCodeType @default(COST_CENTER)
+  isActive     Boolean     @default(true)
+
+  company              Company               @relation(fields: [companyId], references: [id])
+  costCenter           CostCenter?           @relation(fields: [costCenterId], references: [id])
+  materialRequisitions MaterialRequisition[]
+  purchaseRequisitions PurchaseRequisition[]
+  prlLines             PrlLine[]
+  poLines              PoLine[]
+  stockIssues          StockIssue[]
+
+  @@unique([companyId, code])
+  @@map("cost_codes")
+}
+
+model JournalEntry {
+  id           String        @id @default(cuid())
+  companyId    String
+  docNo        String        @db.VarChar(30)
+  entryDate    DateTime      @db.Date
+  description  String        @db.VarChar(500)
+  status       JournalStatus @default(DRAFT)
+  sourceModule String?       @db.VarChar(20)
+  sourceDocId  String?
+  reversedById String?
+  postedAt     DateTime?
+  createdById  String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  company Company       @relation(fields: [companyId], references: [id])
+  lines   JournalLine[]
+
+  @@unique([companyId, docNo])
+  @@index([companyId, status])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id           String   @id @default(cuid())
+  journalId    String
+  accountId    String
+  costCenterId String?
+  debit        Decimal  @default(0) @db.Decimal(18, 3)
+  credit       Decimal  @default(0) @db.Decimal(18, 3)
+  currencyId   String?
+  fxRate       Decimal  @default(1) @db.Decimal(18, 6)
+  description  String?  @db.VarChar(300)
+  lineNo       Int
+
+  journal     JournalEntry @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  account     GlAccount    @relation(fields: [accountId], references: [id])
+  costCenter  CostCenter?  @relation(fields: [costCenterId], references: [id])
+
+  @@index([journalId])
+  @@index([accountId])
+  @@map("journal_lines")
+}
+
+model ApInvoice {
+  id                 String          @id @default(cuid())
+  companyId          String
+  docNo              String          @db.VarChar(30)
+  supplierId         String
+  poId               String?
+  grnId              String?
+  supplierInvoiceNo  String          @db.VarChar(50)
+  invoiceDate        DateTime        @db.Date
+  dueDate            DateTime        @db.Date
+  amount             Decimal         @db.Decimal(18, 3)
+  taxAmount          Decimal         @default(0) @db.Decimal(18, 3)
+  totalAmount        Decimal         @db.Decimal(18, 3)
+  status             ApInvoiceStatus @default(DRAFT)
+  createdById        String
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  company  Company       @relation(fields: [companyId], references: [id])
+  supplier Supplier      @relation(fields: [supplierId], references: [id])
+  po       PurchaseOrder? @relation(fields: [poId], references: [id])
+  grn      GrnHeader?    @relation(fields: [grnId], references: [id])
+
+  @@unique([companyId, docNo])
+  @@index([companyId, status])
+  @@index([supplierId])
+  @@map("ap_invoices")
+}
+
+model ApPayment {
+  id            String        @id @default(cuid())
+  companyId     String
+  docNo         String        @db.VarChar(30)
+  supplierId    String
+  paymentDate   DateTime      @db.Date
+  amount        Decimal       @db.Decimal(18, 3)
+  paymentMethod PaymentMethod
+  bankAccountId String?
+  notes         String?       @db.Text
+  status        String        @default("POSTED") @db.VarChar(20)
+  createdById   String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id])
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  @@unique([companyId, docNo])
+  @@map("ap_payments")
+}
+
+model ArInvoice {
+  id          String   @id @default(cuid())
+  companyId   String
+  docNo       String   @db.VarChar(30)
+  customerId  String
+  invoiceDate DateTime @db.Date
+  dueDate     DateTime @db.Date
+  amount      Decimal  @db.Decimal(18, 3)
+  taxAmount   Decimal  @default(0) @db.Decimal(18, 3)
+  totalAmount Decimal  @db.Decimal(18, 3)
+  status      String   @default("DRAFT") @db.VarChar(20)
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, docNo])
+  @@map("ar_invoices")
+}
+
+model ArReceipt {
+  id            String        @id @default(cuid())
+  companyId     String
+  docNo         String        @db.VarChar(30)
+  customerId    String
+  receiptDate   DateTime      @db.Date
+  amount        Decimal       @db.Decimal(18, 3)
+  paymentMethod PaymentMethod
+  notes         String?       @db.Text
+  status        String        @default("POSTED") @db.VarChar(20)
+  createdById   String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, docNo])
+  @@map("ar_receipts")
+}
+
+model Budget {
+  id           String   @id @default(cuid())
+  companyId    String
+  fiscalYear   Int
+  accountId    String
+  costCenterId String?
+  annualAmount Decimal  @db.Decimal(18, 3)
+  createdAt    DateTime @default(now())
+
+  company    Company      @relation(fields: [companyId], references: [id])
+  costCenter CostCenter?  @relation(fields: [costCenterId], references: [id])
+  periods    BudgetPeriod[]
+
+  @@unique([companyId, fiscalYear, accountId, costCenterId])
+  @@map("budgets")
+}
+
+model BudgetPeriod {
+  id              String  @id @default(cuid())
+  budgetId        String
+  periodMonth     Int
+  periodYear      Int
+  budgetedAmount  Decimal @db.Decimal(18, 3)
+  actualAmount    Decimal @default(0) @db.Decimal(18, 3)
+
+  budget Budget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+
+  @@unique([budgetId, periodMonth, periodYear])
+  @@map("budget_periods")
+}

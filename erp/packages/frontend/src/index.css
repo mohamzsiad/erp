@@ -1,0 +1,141 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base Resets ──────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.4;
+    color: #1a1a1a;
+    background-color: #f0f2f5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ERP-style dense form inputs */
+  input[type="text"],
+  input[type="email"],
+  input[type="number"],
+  input[type="password"],
+  input[type="date"],
+  select,
+  textarea {
+    @apply text-sm;
+  }
+}
+
+/* ── Component Layer ─────────────────────────────────────────────────────── */
+@layer components {
+  /* Status badge variants */
+  .badge-draft     { @apply bg-gray-100 text-gray-700 border border-gray-300; }
+  .badge-submitted { @apply bg-blue-100 text-blue-700 border border-blue-300; }
+  .badge-pending   { @apply bg-amber-100 text-amber-700 border border-amber-300; }
+  .badge-approved  { @apply bg-green-100 text-green-700 border border-green-300; }
+  .badge-rejected  { @apply bg-red-100 text-red-700 border border-red-300; }
+  .badge-open      { @apply bg-sky-100 text-sky-700 border border-sky-300; }
+  .badge-closed    { @apply bg-purple-100 text-purple-700 border border-purple-300; }
+  .badge-cancelled { @apply bg-gray-200 text-gray-500 border border-gray-300; }
+  .badge-posted    { @apply bg-teal-100 text-teal-700 border border-teal-300; }
+  .badge-partial   { @apply bg-yellow-100 text-yellow-700 border border-yellow-300; }
+  .badge-active    { @apply bg-green-100 text-green-700 border border-green-300; }
+  .badge-inactive  { @apply bg-gray-100 text-gray-500 border border-gray-300; }
+
+  /* ERP form field */
+  .erp-label {
+    @apply text-xs font-medium text-gray-600 mb-0.5 block;
+  }
+
+  .erp-input {
+    @apply w-full px-2 py-1 text-sm border border-gray-300 rounded
+           focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500
+           bg-white disabled:bg-gray-50 disabled:text-gray-500;
+  }
+
+  .erp-required-star {
+    @apply text-red-500 ml-0.5;
+  }
+
+  /* Sidebar nav item */
+  .nav-item {
+    @apply flex items-center gap-2 px-3 py-1.5 text-sm text-sidebar-muted
+           hover:bg-sidebar-hover hover:text-white rounded cursor-pointer
+           transition-colors duration-150;
+  }
+
+  .nav-item-active {
+    @apply bg-sidebar-active text-white;
+  }
+
+  /* Document toolbar button */
+  .toolbar-btn {
+    @apply flex items-center gap-1 px-2.5 py-1 text-xs font-medium
+           border border-gray-300 rounded bg-white hover:bg-gray-50
+           active:bg-gray-100 transition-colors duration-100 cursor-pointer;
+  }
+
+  .toolbar-btn-primary {
+    @apply toolbar-btn bg-blue-600 border-blue-600 text-white hover:bg-blue-700;
+  }
+
+  /* AG Grid ERP theme overrides */
+  .ag-theme-erp .ag-header {
+    @apply bg-gray-100;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .ag-theme-erp .ag-row {
+    font-size: 12px;
+  }
+
+  .ag-theme-erp .ag-row-even {
+    @apply bg-white;
+  }
+
+  .ag-theme-erp .ag-row-odd {
+    background-color: #fafafa;
+  }
+}
+
+/* ── Animations ───────────────────────────────────────────────────────────── */
+@keyframes slide-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.2s ease-out;
+}
+
+/* ── Utility Layer ────────────────────────────────────────────────────────── */
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: #d1d5db;
+    border-radius: 999px;
+  }
+}

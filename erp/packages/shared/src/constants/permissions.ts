@@ -1,0 +1,57 @@
+export const ACTIONS = {
+  VIEW: 'VIEW',
+  CREATE: 'CREATE',
+  EDIT: 'EDIT',
+  APPROVE: 'APPROVE',
+  DELETE: 'DELETE',
+  VOID: 'VOID',
+  CONFIGURE: 'CONFIGURE',
+} as const;
+
+export type Action = (typeof ACTIONS)[keyof typeof ACTIONS];
+
+// Resource keys per module
+export const RESOURCES = {
+  // Core
+  USERS: 'USERS',
+  ROLES: 'ROLES',
+  CONFIG: 'CONFIG',
+  SEQUENCES: 'SEQUENCES',
+  // Procurement
+  SUPPLIERS: 'SUPPLIERS',
+  MRL: 'MRL',
+  PRL: 'PRL',
+  ENQUIRY: 'ENQUIRY',
+  QUOTATION: 'QUOTATION',
+  PO: 'PO',
+  SUPPLIER_RETURN: 'SUPPLIER_RETURN',
+  // Inventory
+  ITEMS: 'ITEMS',
+  WAREHOUSES: 'WAREHOUSES',
+  GRN: 'GRN',
+  STOCK_ISSUE: 'STOCK_ISSUE',
+  STOCK_TRANSFER: 'STOCK_TRANSFER',
+  STOCK_ADJUSTMENT: 'STOCK_ADJUSTMENT',
+  PHYSICAL_COUNT: 'PHYSICAL_COUNT',
+  // Finance
+  GL_ACCOUNTS: 'GL_ACCOUNTS',
+  COST_CENTERS: 'COST_CENTERS',
+  JOURNAL: 'JOURNAL',
+  AP_INVOICE: 'AP_INVOICE',
+  AP_PAYMENT: 'AP_PAYMENT',
+  AR_INVOICE: 'AR_INVOICE',
+  AR_RECEIPT: 'AR_RECEIPT',
+  BUDGET: 'BUDGET',
+} as const;
+
+export type Resource = (typeof RESOURCES)[keyof typeof RESOURCES];
+
+// Built-in system roles
+export const SYSTEM_ROLES = {
+  SYSTEM_ADMIN: 'SYSTEM_ADMIN',
+  PROCUREMENT_MANAGER: 'PROCUREMENT_MANAGER',
+  INVENTORY_MANAGER: 'INVENTORY_MANAGER',
+  FINANCE_MANAGER: 'FINANCE_MANAGER',
+} as const;
+
+export type SystemRole = (typeof SYSTEM_ROLES)[keyof typeof SYSTEM_ROLES];
