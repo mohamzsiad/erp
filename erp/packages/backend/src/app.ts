@@ -11,6 +11,7 @@ import swaggerPlugin from './plugins/swagger.js';
 import authRoutes from './routes/auth/index.js';
 import adminRoutes from './routes/admin/index.js';
 import procurementRoutes from './routes/procurement/index.js';
+import inventoryRoutes from './routes/inventory/index.js';
 import notificationRoutes from './routes/notifications/index.js';
 import { authenticateRequest } from './middleware/authenticate.js';
 
@@ -132,6 +133,9 @@ export async function buildApp() {
 
     // Procurement routes
     await protectedApp.register(procurementRoutes, { prefix: '/api/v1/procurement' });
+
+    // Inventory routes
+    await protectedApp.register(inventoryRoutes, { prefix: '/api/v1/inventory' });
 
     // Notification routes
     await protectedApp.register(notificationRoutes, { prefix: '/api/v1/notifications' });

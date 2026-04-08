@@ -82,6 +82,20 @@ const NAV_TREE: NavItem[] = [
           { id: 'supplier-list', label: 'Supplier Master', path: '/procurement/suppliers', icon: <Building2 size={13} /> },
         ],
       },
+      {
+        id: 'proc-reports',
+        label: 'Reports',
+        icon: <BarChart2 size={14} />,
+        children: [
+          { id: 'rpt-pr-status',       label: 'PR Status',              path: '/procurement/reports/pr-status',              icon: <TrendingUp size={13} /> },
+          { id: 'rpt-po-status',       label: 'PO Status',              path: '/procurement/reports/po-status',              icon: <TrendingUp size={13} /> },
+          { id: 'rpt-po-history',      label: 'PO History by Supplier', path: '/procurement/reports/po-history-by-supplier', icon: <TrendingUp size={13} /> },
+          { id: 'rpt-tracking',        label: 'Procurement Tracking',   path: '/procurement/reports/procurement-tracking',   icon: <TrendingUp size={13} /> },
+          { id: 'rpt-lead-time',       label: 'Lead Time Variance',     path: '/procurement/reports/lead-time-variance',     icon: <TrendingUp size={13} /> },
+          { id: 'rpt-price-cmp',       label: 'Price Comparison',       path: '/procurement/reports/price-comparison',       icon: <TrendingUp size={13} /> },
+          { id: 'rpt-pending-pr',      label: 'Pending PRs',            path: '/procurement/reports/pending-pr',             icon: <TrendingUp size={13} /> },
+        ],
+      },
     ],
   },
   {
@@ -91,11 +105,21 @@ const NAV_TREE: NavItem[] = [
     module: 'INVENTORY',
     children: [
       {
+        id: 'inv-master',
+        label: 'Masters',
+        icon: <Package size={14} />,
+        children: [
+          { id: 'item-list',      label: 'Item Master',       path: '/inventory/items',       icon: <Package size={13} /> },
+          { id: 'warehouse-list', label: 'Warehouses',        path: '/inventory/warehouses',  icon: <Building2 size={13} /> },
+          { id: 'bin-list',       label: 'Bins',              path: '/inventory/bins',         icon: <FileText size={13} /> },
+        ],
+      },
+      {
         id: 'inv-receipts',
         label: 'Receipts',
         icon: <ClipboardList size={14} />,
         children: [
-          { id: 'grn-list', label: 'Goods Receipt Notes', path: '/inventory/grn', icon: <FileText size={13} /> },
+          { id: 'grn-list', label: 'Goods Receipt Notes (GRN)', path: '/inventory/grn', icon: <FileText size={13} /> },
         ],
       },
       {
@@ -103,8 +127,8 @@ const NAV_TREE: NavItem[] = [
         label: 'Issues & Transfers',
         icon: <ArrowRightLeft size={14} />,
         children: [
-          { id: 'issue-list', label: 'Stock Issues', path: '/inventory/issues', icon: <FileText size={13} /> },
-          { id: 'transfer-list', label: 'Stock Transfers', path: '/inventory/transfers', icon: <ArrowRightLeft size={13} /> },
+          { id: 'issue-list',    label: 'Stock Issues',    path: '/inventory/issue',    icon: <FileText size={13} /> },
+          { id: 'transfer-list', label: 'Stock Transfers', path: '/inventory/transfer', icon: <ArrowRightLeft size={13} /> },
         ],
       },
       {
@@ -112,7 +136,7 @@ const NAV_TREE: NavItem[] = [
         label: 'Adjustments',
         icon: <Sliders size={14} />,
         children: [
-          { id: 'adj-list', label: 'Stock Adjustments', path: '/inventory/adjustments', icon: <FileText size={13} /> },
+          { id: 'adj-list', label: 'Stock Adjustments', path: '/inventory/adjustment', icon: <FileText size={13} /> },
         ],
       },
       {
@@ -120,17 +144,21 @@ const NAV_TREE: NavItem[] = [
         label: 'Stock Enquiry',
         icon: <BarChart2 size={14} />,
         children: [
-          { id: 'stock-balance', label: 'Stock Balance', path: '/inventory/balance', icon: <BarChart2 size={13} /> },
-          { id: 'stock-movements', label: 'Stock Movements', path: '/inventory/movements', icon: <TrendingUp size={13} /> },
+          { id: 'stock-balance', label: 'Stock Balance Query', path: '/inventory/queries/stock-balance', icon: <BarChart2 size={13} /> },
         ],
       },
       {
-        id: 'inv-master',
-        label: 'Item Master',
-        icon: <Package size={14} />,
+        id: 'inv-reports',
+        label: 'Reports',
+        icon: <TrendingUp size={14} />,
         children: [
-          { id: 'item-list', label: 'Items', path: '/inventory/items', icon: <Package size={13} /> },
-          { id: 'warehouse-list', label: 'Warehouses', path: '/inventory/warehouses', icon: <Building2 size={13} /> },
+          { id: 'inv-rpt-stock-balance',  label: 'Stock Balance',             path: '/inventory/reports/stock-balance',           icon: <TrendingUp size={13} /> },
+          { id: 'inv-rpt-stock-aging',    label: 'Stock Aging',               path: '/inventory/reports/stock-aging',             icon: <TrendingUp size={13} /> },
+          { id: 'inv-rpt-dio',            label: 'Dead / Inactive / Obsolete',path: '/inventory/reports/dead-inactive-obsolete',  icon: <TrendingUp size={13} /> },
+          { id: 'inv-rpt-grn-summary',    label: 'GRN Summary',               path: '/inventory/reports/grn-summary',             icon: <TrendingUp size={13} /> },
+          { id: 'inv-rpt-movement',       label: 'Stock Movement',            path: '/inventory/reports/stock-movement',          icon: <TrendingUp size={13} /> },
+          { id: 'inv-rpt-reorder',        label: 'Reorder Report',            path: '/inventory/reports/reorder',                 icon: <TrendingUp size={13} /> },
+          { id: 'inv-rpt-valuation',      label: 'Stock Valuation',           path: '/inventory/reports/valuation',               icon: <TrendingUp size={13} /> },
         ],
       },
     ],

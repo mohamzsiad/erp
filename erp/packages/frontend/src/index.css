@@ -88,6 +88,11 @@
     @apply toolbar-btn bg-blue-600 border-blue-600 text-white hover:bg-blue-700;
   }
 
+  /* Report grid row states */
+  .erp-row-overdue {
+    @apply bg-red-50 text-red-700;
+  }
+
   /* AG Grid ERP theme overrides */
   .ag-theme-erp .ag-header {
     @apply bg-gray-100;

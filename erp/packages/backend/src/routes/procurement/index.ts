@@ -5,6 +5,7 @@ import prlRoutes from './prl.js';
 import enquiryRoutes from './enquiry.js';
 import quotationRoutes from './quotation.js';
 import poRoutes from './po.js';
+import reportRoutes from './reports.js';
 
 export default async function procurementRoutes(fastify: FastifyInstance) {
   await fastify.register(supplierRoutes, { prefix: '/suppliers' });
@@ -13,4 +14,5 @@ export default async function procurementRoutes(fastify: FastifyInstance) {
   await fastify.register(enquiryRoutes, { prefix: '/enquiry' });
   await fastify.register(quotationRoutes, { prefix: '/quotation' });
   await fastify.register(poRoutes, { prefix: '/po' });
+  await fastify.register(reportRoutes, { prefix: '/reports' });
 }

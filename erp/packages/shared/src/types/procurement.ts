@@ -206,10 +206,4 @@ export interface Notification {
   createdAt: string;
 }
 
-// ── Stock summary used in MRL/PRL ─────────────────────────────────────────────
-export interface StockSummary {
-  itemId: string;
-  qtyOnHand: number;
-  qtyReserved: number;
-  freeStock: number;
-}
+// StockSummary is defined in inventory.ts — imported from there

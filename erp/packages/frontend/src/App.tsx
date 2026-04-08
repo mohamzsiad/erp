@@ -10,21 +10,11 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const NotFoundPage = lazy(() => import('./pages/errors/NotFoundPage'));
 const ForbiddenPage = lazy(() => import('./pages/errors/ForbiddenPage'));
 
-// ── Procurement (will be populated in Prompt 3) ───────────────────────────────
-const ProcurementPlaceholder = () => (
-  <div className="p-6">
-    <h2 className="text-lg font-semibold text-gray-700">Procurement Module</h2>
-    <p className="text-gray-500 text-sm mt-1">This module will be built in Prompt 3.</p>
-  </div>
-);
+// ── Procurement ───────────────────────────────────────────────────────────────
+const ProcurementRouter = lazy(() => import('./pages/procurement/ProcurementRouter'));
 
-// ── Inventory (Prompt 5) ──────────────────────────────────────────────────────
-const InventoryPlaceholder = () => (
-  <div className="p-6">
-    <h2 className="text-lg font-semibold text-gray-700">Inventory Module</h2>
-    <p className="text-gray-500 text-sm mt-1">This module will be built in Prompt 5.</p>
-  </div>
-);
+// ── Inventory ─────────────────────────────────────────────────────────────────
+const InventoryRouter = lazy(() => import('./pages/inventory/InventoryRouter'));
 
 // ── Finance (Prompt 7) ────────────────────────────────────────────────────────
 const FinancePlaceholder = () => (
@@ -73,7 +63,7 @@ export default function App() {
             path="/procurement/*"
             element={
               <ProtectedRoute requireModule="PROCUREMENT">
-                <ProcurementPlaceholder />
+                <ProcurementRouter />
               </ProtectedRoute>
             }
           />
@@ -83,7 +73,7 @@ export default function App() {
             path="/inventory/*"
             element={
               <ProtectedRoute requireModule="INVENTORY">
-                <InventoryPlaceholder />
+                <InventoryRouter />
               </ProtectedRoute>
             }
           />
