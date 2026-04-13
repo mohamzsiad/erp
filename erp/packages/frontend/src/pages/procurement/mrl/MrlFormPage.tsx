@@ -119,15 +119,39 @@ export default function MrlFormPage() {
 
   useEffect(() => {
     if (doc) {
+      const raw = doc as typeof doc & {
+        location?: { id: string; code: string; name: string };
+        chargeCode?: { id: string; code: string; name: string };
+        lines?: Array<typeof doc.lines extends Array<infer L> ? L & {
+          item?: { id: string; code: string; description: string };
+          uom?: { id: string; code: string; name: string };
+        } : never>;
+      };
+
+      if (raw.location) {
+        setLocation({ value: raw.location.id, label: raw.location.name, subLabel: raw.location.code });
+      }
+      if (raw.chargeCode) {
+        setChargeCode({ value: raw.chargeCode.id, label: `${raw.chargeCode.code} – ${raw.chargeCode.name}`, subLabel: raw.chargeCode.code });
+      }
+
       reset({
         locationId: doc.locationId,
-        docDate: doc.docDate,
+        docDate: doc.docDate ? format(new Date(doc.docDate), 'yyyy-MM-dd') : '',
         chargeCodeId: doc.chargeCodeId,
-        deliveryDate: doc.deliveryDate,
+        deliveryDate: doc.deliveryDate ? format(new Date(doc.deliveryDate), 'yyyy-MM-dd') : '',
         remarks: doc.remarks ?? '',
       });
-      if (doc.lines) {
-        setLineRows(doc.lines.map((l) => ({ ...l, _rowId: l.id })));
+
+      if (raw.lines) {
+        setLineRows(
+          raw.lines.map((l) => ({
+            ...l,
+            _rowId: l.id,
+            itemLabel: l.item?.description ?? l.itemId,
+            uomLabel: l.uom?.name ?? l.uomId,
+          }))
+        );
       }
     }
   }, [doc, reset]);
@@ -239,6 +263,26 @@ export default function MrlFormPage() {
   const isApproved = doc?.status === 'APPROVED';
   const isSubmitted = doc?.status === 'SUBMITTED';
 
+  // Keyboard shortcuts — must be declared before any early returns (Rules of Hooks)
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSubmit(onSubmit)();
+      }
+      if (e.key === 'F5') {
+        e.preventDefault();
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [handleSubmit, onSubmit]
+  );
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
   if (!isNew && isLoading) {
     return <div className="flex items-center justify-center h-64"><p className="text-gray-400 text-sm">Loading…</p></div>;
   }
@@ -253,10 +297,10 @@ export default function MrlFormPage() {
             <Controller
               name="locationId"
               control={control}
-              render={() => (
+              render={({ field }) => (
                 <LookupField
                   value={location}
-                  onChange={(opt) => { setLocation(opt); }}
+                  onChange={(opt) => { setLocation(opt); field.onChange(opt?.value ?? ''); }}
                   onSearch={searchLocations}
                   placeholder="Search location…"
                   error={!!errors.locationId}
@@ -282,10 +326,10 @@ export default function MrlFormPage() {
             <Controller
               name="chargeCodeId"
               control={control}
-              render={() => (
+              render={({ field }) => (
                 <LookupField
                   value={chargeCode}
-                  onChange={setChargeCode}
+                  onChange={(opt) => { setChargeCode(opt); field.onChange(opt?.value ?? ''); }}
                   onSearch={searchChargeCodes}
                   placeholder="Search charge code…"
                   error={!!errors.chargeCodeId}
@@ -487,26 +531,6 @@ export default function MrlFormPage() {
     { id: 'key-info', label: 'Key Info', content: keyInfoPanel },
     { id: 'item-details', label: 'Item Details', badge: lineRows.length, content: itemDetailsTab },
   ];
-
-  // Keyboard shortcuts
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        handleSubmit(onSubmit)();
-      }
-      if (e.key === 'F5') {
-        e.preventDefault();
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [handleSubmit, onSubmit]
-  );
-
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
 
   return (
     <div className="flex flex-col h-full">

@@ -3,6 +3,8 @@ import type { CreateGrnInput } from '@clouderp/shared';
 import { StockEngine } from './StockEngine.js';
 import { getNextDocNo } from '../../utils/DocNumberService.js';
 import { NotificationService } from '../NotificationService.js';
+import { AccountMappingService } from '../finance/AccountMappingService.js';
+import { JournalService } from '../finance/JournalService.js';
 
 export class GrnService {
   private readonly stockEngine: StockEngine;
@@ -307,7 +309,7 @@ export class GrnService {
     return this.getById(id, companyId);
   }
 
-  // ── Minimal GRN journal (Inventory Dr / GRN Clearing Cr) ─────────────────────
+  // ── GRN journal (Inventory Dr / GRN Clearing Cr) ─────────────────────────
   private async postGrnJournal(
     tx: any,
     grn: any,
@@ -325,45 +327,30 @@ export class GrnService {
     );
     if (totalValue <= 0) return;
 
-    // Find inventory and GRN clearing accounts
-    const [inventoryAcc, clearingAcc] = await Promise.all([
-      tx.glAccount.findFirst({ where: { companyId, code: '1310' } }),
-      tx.glAccount.findFirst({ where: { companyId, code: '2200' } }),
+    // Resolve accounts via AccountMappingService (gracefully skip if not configured)
+    const mappingSvc = new AccountMappingService(tx);
+    const [inventoryAccId, clearingAccId] = await Promise.all([
+      mappingSvc.tryResolve(companyId, 'INVENTORY_ACCOUNT'),
+      mappingSvc.tryResolve(companyId, 'GRN_CLEARING'),
     ]);
-    if (!inventoryAcc || !clearingAcc) return; // Chart of accounts not yet set up
 
-    const jeDocNo = `JE-GRN-${grn.docNo}`;
-    await tx.journalEntry.create({
-      data: {
-        companyId,
-        docNo:        jeDocNo,
-        entryDate:    grn.docDate,
-        description:  `GRN posting: ${grn.docNo}`,
-        status:       'POSTED',
-        sourceModule: 'INVENTORY',
-        sourceDocId:  grn.id,
-        postedAt:     new Date(),
-        createdById:  userId,
-        lines: {
-          create: [
-            {
-              accountId:   inventoryAcc.id,
-              description: `Inventory receipt: ${grn.docNo}`,
-              debit:       totalValue,
-              credit:      0,
-              lineNo:      1,
-            },
-            {
-              accountId:   clearingAcc.id,
-              description: `GRN clearing: ${grn.docNo}`,
-              debit:       0,
-              credit:      totalValue,
-              lineNo:      2,
-            },
-          ],
-        },
-      },
-    });
+    if (!inventoryAccId || !clearingAccId) {
+      // Finance module mappings not yet configured — skip silently
+      return;
+    }
+
+    await new JournalService(tx).postJournal({
+      companyId,
+      entryDate:    grn.docDate,
+      description:  `GRN posting: ${grn.docNo}`,
+      sourceModule: 'INVENTORY',
+      sourceDocId:  grn.id,
+      userId,
+      lines: [
+        { accountId: inventoryAccId, debit: totalValue, credit: 0,          description: `Inventory receipt: ${grn.docNo}` },
+        { accountId: clearingAccId,  debit: 0,          credit: totalValue, description: `GRN clearing: ${grn.docNo}` },
+      ],
+    }, tx);
   }
 
   // ── Cancel (only DRAFT) ───────────────────────────────────────────────────────

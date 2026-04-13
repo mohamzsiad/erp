@@ -73,6 +73,51 @@ export default async function mrlRoutes(fastify: FastifyInstance) {
     return reply.code(201).send(result);
   });
 
+  // GET /mrl/stock-tiles?locationId=...
+  // Returns stock health tiles for the StatusTiles sidebar on the MRL form.
+  // Scoped to PROCUREMENT:MRL:VIEW so procurement users don't need INVENTORY permissions.
+  fastify.get('/stock-tiles', {
+    schema: {
+      tags: ['Procurement - MRL'],
+      querystring: {
+        type: 'object',
+        properties: { locationId: { type: 'string' } },
+      },
+    },
+    preHandler: [PERM.VIEW],
+  }, async (req: FastifyRequest<{ Querystring: { locationId?: string } }>, reply: FastifyReply) => {
+    const { companyId } = req.user;
+    const { locationId } = req.query;
+    const prisma = req.server.prisma;
+
+    // Resolve warehouse IDs for the given location (or all warehouses in company)
+    const warehouseWhere: any = { companyId };
+    if (locationId) warehouseWhere.locationId = locationId;
+
+    const [obsoleteStock, inactiveStock, deadStock, pendingIssues, pendingLto, pendingGrn] = await Promise.all([
+      prisma.stockBalance.count({
+        where: { companyId, qtyOnHand: { gt: 0 }, item: { status: 'OBSOLETE' }, warehouse: warehouseWhere },
+      }),
+      prisma.stockBalance.count({
+        where: { companyId, qtyOnHand: { gt: 0 }, item: { status: 'INACTIVE' }, warehouse: warehouseWhere },
+      }),
+      prisma.stockBalance.count({
+        where: { companyId, qtyOnHand: { gt: 0 }, item: { status: 'DEAD' }, warehouse: warehouseWhere },
+      }),
+      prisma.stockIssue.count({
+        where: { companyId, status: 'DRAFT', warehouse: warehouseWhere },
+      }),
+      prisma.stockTransfer.count({
+        where: { companyId, status: 'DRAFT', fromWarehouse: warehouseWhere },
+      }),
+      prisma.grnHeader.count({
+        where: { companyId, status: 'DRAFT', warehouse: warehouseWhere },
+      }),
+    ]);
+
+    return reply.send({ obsoleteStock, inactiveStock, deadStock, pendingIssues, pendingLto, pendingGrn });
+  });
+
   // GET /mrl/:id
   fastify.get('/:id', {
     schema: { tags: ['Procurement - MRL'], params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },

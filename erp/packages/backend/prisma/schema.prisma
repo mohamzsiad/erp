@@ -5,7 +5,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -191,6 +192,9 @@ model Company {
   arReceipts          ArReceipt[]
   budgets             Budget[]
   currencies          Currency[]
+  customers           Customer[]
+  periodCloses        PeriodClose[]
+  accountMappings     AccountMapping[]
 
   @@map("companies")
 }
@@ -1014,11 +1018,13 @@ model GlAccount {
   currencyId  String?
   isActive    Boolean     @default(true)
 
-  company      Company      @relation(fields: [companyId], references: [id])
-  parent       GlAccount?   @relation("AccountParent", fields: [parentId], references: [id])
-  children     GlAccount[]  @relation("AccountParent")
-  currency     Currency?    @relation(fields: [currencyId], references: [id])
-  journalLines JournalLine[]
+  company         Company          @relation(fields: [companyId], references: [id])
+  parent          GlAccount?       @relation("AccountParent", fields: [parentId], references: [id])
+  children        GlAccount[]      @relation("AccountParent")
+  currency        Currency?        @relation(fields: [currencyId], references: [id])
+  journalLines    JournalLine[]
+  budgets         Budget[]
+  accountMappings AccountMapping[]
 
   @@unique([companyId, code])
   @@index([companyId, accountType])
@@ -1110,6 +1116,23 @@ model JournalLine {
   @@map("journal_lines")
 }
 
+model Customer {
+  id        String   @id @default(cuid())
+  companyId String
+  code      String   @db.VarChar(20)
+  name      String   @db.VarChar(200)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company    Company     @relation(fields: [companyId], references: [id])
+  arInvoices ArInvoice[]
+  arReceipts ArReceipt[]
+
+  @@unique([companyId, code])
+  @@map("customers")
+}
+
 model ApInvoice {
   id                 String          @id @default(cuid())
   companyId          String
@@ -1123,15 +1146,19 @@ model ApInvoice {
   amount             Decimal         @db.Decimal(18, 3)
   taxAmount          Decimal         @default(0) @db.Decimal(18, 3)
   totalAmount        Decimal         @db.Decimal(18, 3)
+  paidAmount         Decimal         @default(0) @db.Decimal(18, 3)
   status             ApInvoiceStatus @default(DRAFT)
+  matchFlag          String?         @db.VarChar(20)   // NULL | MATCHED | MISMATCH
+  journalId          String?
   createdById        String
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
 
-  company  Company       @relation(fields: [companyId], references: [id])
-  supplier Supplier      @relation(fields: [supplierId], references: [id])
-  po       PurchaseOrder? @relation(fields: [poId], references: [id])
-  grn      GrnHeader?    @relation(fields: [grnId], references: [id])
+  company     Company        @relation(fields: [companyId], references: [id])
+  supplier    Supplier       @relation(fields: [supplierId], references: [id])
+  po          PurchaseOrder? @relation(fields: [poId], references: [id])
+  grn         GrnHeader?     @relation(fields: [grnId], references: [id])
+  allocations ApAllocation[]
 
   @@unique([companyId, docNo])
   @@index([companyId, status])
@@ -1150,15 +1177,30 @@ model ApPayment {
   bankAccountId String?
   notes         String?       @db.Text
   status        String        @default("POSTED") @db.VarChar(20)
+  journalId     String?
   createdById   String
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  company  Company  @relation(fields: [companyId], references: [id])
-  supplier Supplier @relation(fields: [supplierId], references: [id])
+  company     Company        @relation(fields: [companyId], references: [id])
+  supplier    Supplier       @relation(fields: [supplierId], references: [id])
+  allocations ApAllocation[]
 
   @@unique([companyId, docNo])
   @@map("ap_payments")
+}
+
+model ApAllocation {
+  id          String   @id @default(cuid())
+  paymentId   String
+  invoiceId   String
+  amount      Decimal  @db.Decimal(18, 3)
+  allocatedAt DateTime @default(now())
+
+  payment ApPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice ApInvoice @relation(fields: [invoiceId], references: [id])
+
+  @@map("ap_allocations")
 }
 
 model ArInvoice {
@@ -1166,17 +1208,22 @@ model ArInvoice {
   companyId   String
   docNo       String   @db.VarChar(30)
   customerId  String
+  description String?  @db.VarChar(500)
   invoiceDate DateTime @db.Date
   dueDate     DateTime @db.Date
   amount      Decimal  @db.Decimal(18, 3)
   taxAmount   Decimal  @default(0) @db.Decimal(18, 3)
   totalAmount Decimal  @db.Decimal(18, 3)
+  paidAmount  Decimal  @default(0) @db.Decimal(18, 3)
   status      String   @default("DRAFT") @db.VarChar(20)
+  journalId   String?
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id])
+  company     Company       @relation(fields: [companyId], references: [id])
+  customer    Customer      @relation(fields: [customerId], references: [id])
+  allocations ArAllocation[]
 
   @@unique([companyId, docNo])
   @@map("ar_invoices")
@@ -1192,14 +1239,30 @@ model ArReceipt {
   paymentMethod PaymentMethod
   notes         String?       @db.Text
   status        String        @default("POSTED") @db.VarChar(20)
+  journalId     String?
   createdById   String
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id])
+  company     Company       @relation(fields: [companyId], references: [id])
+  customer    Customer      @relation(fields: [customerId], references: [id])
+  allocations ArAllocation[]
 
   @@unique([companyId, docNo])
   @@map("ar_receipts")
+}
+
+model ArAllocation {
+  id          String   @id @default(cuid())
+  receiptId   String
+  invoiceId   String
+  amount      Decimal  @db.Decimal(18, 3)
+  allocatedAt DateTime @default(now())
+
+  receipt ArReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  invoice ArInvoice @relation(fields: [invoiceId], references: [id])
+
+  @@map("ar_allocations")
 }
 
 model Budget {
@@ -1211,8 +1274,9 @@ model Budget {
   annualAmount Decimal  @db.Decimal(18, 3)
   createdAt    DateTime @default(now())
 
-  company    Company      @relation(fields: [companyId], references: [id])
-  costCenter CostCenter?  @relation(fields: [costCenterId], references: [id])
+  company    Company       @relation(fields: [companyId], references: [id])
+  costCenter CostCenter?   @relation(fields: [costCenterId], references: [id])
+  account    GlAccount     @relation(fields: [accountId], references: [id])
   periods    BudgetPeriod[]
 
   @@unique([companyId, fiscalYear, accountId, costCenterId])
@@ -1220,15 +1284,45 @@ model Budget {
 }
 
 model BudgetPeriod {
-  id              String  @id @default(cuid())
-  budgetId        String
-  periodMonth     Int
-  periodYear      Int
-  budgetedAmount  Decimal @db.Decimal(18, 3)
-  actualAmount    Decimal @default(0) @db.Decimal(18, 3)
+  id             String  @id @default(cuid())
+  budgetId       String
+  periodMonth    Int
+  periodYear     Int
+  budgetedAmount Decimal @db.Decimal(18, 3)
+  actualAmount   Decimal @default(0) @db.Decimal(18, 3)
 
   budget Budget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
 
   @@unique([budgetId, periodMonth, periodYear])
   @@map("budget_periods")
+}
+
+model PeriodClose {
+  id           String    @id @default(cuid())
+  companyId    String
+  periodYear   Int
+  periodMonth  Int
+  closedAt     DateTime  @default(now())
+  closedById   String
+  reopenedAt   DateTime?
+  reopenedById String?
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, periodYear, periodMonth])
+  @@map("period_closes")
+}
+
+model AccountMapping {
+  id          String  @id @default(cuid())
+  companyId   String
+  mappingType String  @db.VarChar(50)  // INVENTORY_ACCOUNT | SUPPLIER_CONTROL | CUSTOMER_CONTROL | GRN_CLEARING | BANK_ACCOUNT | AP_EXPENSE | AR_REVENUE
+  refId       String? @db.VarChar(50)  // Optional: e.g. itemCategoryId for INVENTORY_ACCOUNT
+  accountId   String
+
+  company Company   @relation(fields: [companyId], references: [id])
+  account GlAccount @relation(fields: [accountId], references: [id])
+
+  @@unique([companyId, mappingType, refId])
+  @@map("account_mappings")
 }

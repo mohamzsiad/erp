@@ -161,6 +161,7 @@ async function main() {
       { module: Module.PROCUREMENT, resource: r, action: PermissionAction.DELETE },
       { module: Module.PROCUREMENT, resource: r, action: PermissionAction.VOID },
     ])).flat(),
+    { module: Module.PROCUREMENT, resource: 'REPORTS', action: PermissionAction.VIEW },
     ...['ITEMS', 'WAREHOUSES', 'GRN', 'STOCK_ISSUE', 'STOCK_TRANSFER', 'STOCK_ADJUSTMENT', 'PHYSICAL_COUNT'].map(r => ([
       { module: Module.INVENTORY, resource: r, action: PermissionAction.VIEW },
       { module: Module.INVENTORY, resource: r, action: PermissionAction.CREATE },
@@ -168,7 +169,8 @@ async function main() {
       { module: Module.INVENTORY, resource: r, action: PermissionAction.APPROVE },
       { module: Module.INVENTORY, resource: r, action: PermissionAction.DELETE },
     ])).flat(),
-    ...['GL_ACCOUNTS', 'COST_CENTERS', 'JOURNAL', 'AP_INVOICE', 'AP_PAYMENT', 'AR_INVOICE', 'AR_RECEIPT', 'BUDGET'].map(r => ([
+    { module: Module.INVENTORY, resource: 'REPORTS', action: PermissionAction.VIEW },
+    ...['GL_ACCOUNT', 'COST_CENTER', 'JOURNAL', 'AP', 'AR', 'BUDGET', 'PERIOD', 'ACCOUNT_MAPPING', 'REPORT'].map(r => ([
       { module: Module.FINANCE, resource: r, action: PermissionAction.VIEW },
       { module: Module.FINANCE, resource: r, action: PermissionAction.CREATE },
       { module: Module.FINANCE, resource: r, action: PermissionAction.EDIT },
@@ -185,6 +187,7 @@ async function main() {
       { module: Module.PROCUREMENT, resource: r, action: PermissionAction.APPROVE },
       { module: Module.PROCUREMENT, resource: r, action: PermissionAction.DELETE },
     ])).flat(),
+    { module: Module.PROCUREMENT, resource: 'REPORTS', action: PermissionAction.VIEW },
     // Read-only inventory
     ...['ITEMS', 'WAREHOUSES', 'GRN'].map(r => ([
       { module: Module.INVENTORY, resource: r, action: PermissionAction.VIEW },
@@ -199,6 +202,7 @@ async function main() {
       { module: Module.INVENTORY, resource: r, action: PermissionAction.APPROVE },
       { module: Module.INVENTORY, resource: r, action: PermissionAction.DELETE },
     ])).flat(),
+    { module: Module.INVENTORY, resource: 'REPORTS', action: PermissionAction.VIEW },
     // Read-only procurement
     ...['SUPPLIERS', 'PO'].map(r => ([
       { module: Module.PROCUREMENT, resource: r, action: PermissionAction.VIEW },
@@ -206,7 +210,7 @@ async function main() {
   ];
 
   const finMgrPerms: PermDef[] = [
-    ...['GL_ACCOUNTS', 'COST_CENTERS', 'JOURNAL', 'AP_INVOICE', 'AP_PAYMENT', 'AR_INVOICE', 'AR_RECEIPT', 'BUDGET'].map(r => ([
+    ...['GL_ACCOUNT', 'COST_CENTER', 'JOURNAL', 'AP', 'AR', 'BUDGET', 'PERIOD', 'ACCOUNT_MAPPING', 'REPORT'].map(r => ([
       { module: Module.FINANCE, resource: r, action: PermissionAction.VIEW },
       { module: Module.FINANCE, resource: r, action: PermissionAction.CREATE },
       { module: Module.FINANCE, resource: r, action: PermissionAction.EDIT },
@@ -279,11 +283,11 @@ async function main() {
     { module: 'INVENTORY',   docType: 'SI',   prefix: 'SI',   nextNo: 1, padLength: 4 },
     { module: 'INVENTORY',   docType: 'ST',   prefix: 'ST',   nextNo: 1, padLength: 4 },
     { module: 'INVENTORY',   docType: 'SA',   prefix: 'SA',   nextNo: 1, padLength: 4 },
-    { module: 'FINANCE',     docType: 'JE',   prefix: 'JE',   nextNo: 1, padLength: 4 },
-    { module: 'FINANCE',     docType: 'API',  prefix: 'API',  nextNo: 1, padLength: 4 },
-    { module: 'FINANCE',     docType: 'APY',  prefix: 'APY',  nextNo: 1, padLength: 4 },
-    { module: 'FINANCE',     docType: 'ARI',  prefix: 'ARI',  nextNo: 1, padLength: 4 },
-    { module: 'FINANCE',     docType: 'ARR',  prefix: 'ARR',  nextNo: 1, padLength: 4 },
+    { module: 'FINANCE',     docType: 'JE',    prefix: 'JE',    nextNo: 1, padLength: 4 },
+    { module: 'FINANCE',     docType: 'APINV', prefix: 'APINV', nextNo: 1, padLength: 4 },
+    { module: 'FINANCE',     docType: 'APPAY', prefix: 'APPAY', nextNo: 1, padLength: 4 },
+    { module: 'FINANCE',     docType: 'ARINV', prefix: 'ARINV', nextNo: 1, padLength: 4 },
+    { module: 'FINANCE',     docType: 'ARREC', prefix: 'ARREC', nextNo: 1, padLength: 4 },
   ];
 
   for (const seq of sequenceDefs) {
@@ -394,7 +398,49 @@ async function main() {
   });
   console.log(`  ✓ Sample Supplier: ${supplier.name}`);
 
-  // ── 12. Workflow Configs ──────────────────────────────────────────────────
+  // ── 12. Finance: Account Mappings ────────────────────────────────────────
+  console.log('Creating account mappings...');
+  const accountMappingDefs = [
+    { mappingType: 'INVENTORY_ACCOUNT', accountCode: '1310' },  // Raw Materials Stock
+    { mappingType: 'GRN_CLEARING',      accountCode: '2200' },  // GRN Clearing
+    { mappingType: 'SUPPLIER_CONTROL',  accountCode: '2100' },  // Accounts Payable
+    { mappingType: 'CUSTOMER_CONTROL',  accountCode: '1200' },  // Accounts Receivable
+    { mappingType: 'BANK_ACCOUNT',      accountCode: '1110' },  // Main Bank Account
+    { mappingType: 'AP_EXPENSE',        accountCode: '5300' },  // Purchase Expense
+    { mappingType: 'AR_REVENUE',        accountCode: '4100' },  // Sales Revenue
+  ];
+  for (const m of accountMappingDefs) {
+    const accountId = glMap[m.accountCode];
+    if (!accountId) { console.warn(`  ⚠ GL account ${m.accountCode} not found — skipping ${m.mappingType}`); continue; }
+    // Prisma does not support null in compound unique where clauses, so use findFirst + create/update
+    const existing = await prisma.accountMapping.findFirst({
+      where: { companyId: company.id, mappingType: m.mappingType, refId: null },
+    });
+    if (existing) {
+      await prisma.accountMapping.update({ where: { id: existing.id }, data: { accountId } });
+    } else {
+      await prisma.accountMapping.create({ data: { companyId: company.id, mappingType: m.mappingType, accountId, refId: null } });
+    }
+  }
+  console.log(`  ✓ ${accountMappingDefs.length} Account Mappings created`);
+
+  // ── 13. Sample Customers (AR) ─────────────────────────────────────────────
+  console.log('Creating sample customers...');
+  const customerDefs = [
+    { code: 'CUST001', name: 'Oman Oil Company SAOC' },
+    { code: 'CUST002', name: 'PDO Petroleum Development Oman' },
+    { code: 'CUST003', name: 'Sohar Aluminium Company LLC' },
+  ];
+  for (const c of customerDefs) {
+    await prisma.customer.upsert({
+      where: { companyId_code: { companyId: company.id, code: c.code } },
+      update: {},
+      create: { companyId: company.id, ...c, isActive: true },
+    });
+  }
+  console.log(`  ✓ ${customerDefs.length} Sample Customers created`);
+
+  // ── 14. Workflow Configs ──────────────────────────────────────────────────
   console.log('Creating workflow configurations...');
   const workflowDefs = [
     {

@@ -3,9 +3,9 @@ import { IssueService } from '../../services/inventory/IssueService.js';
 import { requirePermission } from '../../middleware/authenticate.js';
 
 const PERM = {
-  VIEW:   requirePermission('INVENTORY', 'ISSUE', 'VIEW'),
-  CREATE: requirePermission('INVENTORY', 'ISSUE', 'CREATE'),
-  POST:   requirePermission('INVENTORY', 'ISSUE', 'APPROVE'),
+  VIEW:   requirePermission('INVENTORY', 'STOCK_ISSUE', 'VIEW'),
+  CREATE: requirePermission('INVENTORY', 'STOCK_ISSUE', 'CREATE'),
+  POST:   requirePermission('INVENTORY', 'STOCK_ISSUE', 'APPROVE'),
 };
 
 const issueLineSchema = {

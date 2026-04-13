@@ -3,9 +3,9 @@ import { TransferService } from '../../services/inventory/TransferService.js';
 import { requirePermission } from '../../middleware/authenticate.js';
 
 const PERM = {
-  VIEW:   requirePermission('INVENTORY', 'TRANSFER', 'VIEW'),
-  CREATE: requirePermission('INVENTORY', 'TRANSFER', 'CREATE'),
-  POST:   requirePermission('INVENTORY', 'TRANSFER', 'APPROVE'),
+  VIEW:   requirePermission('INVENTORY', 'STOCK_TRANSFER', 'VIEW'),
+  CREATE: requirePermission('INVENTORY', 'STOCK_TRANSFER', 'CREATE'),
+  POST:   requirePermission('INVENTORY', 'STOCK_TRANSFER', 'APPROVE'),
 };
 
 const transferLineSchema = {

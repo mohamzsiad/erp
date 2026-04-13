@@ -13,6 +13,9 @@ import adminRoutes from './routes/admin/index.js';
 import procurementRoutes from './routes/procurement/index.js';
 import inventoryRoutes from './routes/inventory/index.js';
 import notificationRoutes from './routes/notifications/index.js';
+import coreRoutes from './routes/core/index.js';
+import workflowRoutes from './routes/workflow/index.js';
+import financeRoutes from './routes/finance/index.js';
 import { authenticateRequest } from './middleware/authenticate.js';
 
 export async function buildApp() {
@@ -139,6 +142,15 @@ export async function buildApp() {
 
     // Notification routes
     await protectedApp.register(notificationRoutes, { prefix: '/api/v1/notifications' });
+
+    // Core routes (locations, etc.)
+    await protectedApp.register(coreRoutes, { prefix: '/api/v1/core' });
+
+    // Workflow routes
+    await protectedApp.register(workflowRoutes, { prefix: '/api/v1/workflow' });
+
+    // Finance routes
+    await protectedApp.register(financeRoutes, { prefix: '/api/v1/finance' });
   });
 
   // ── Global Error Handler ───────────────────────────────────────────────────

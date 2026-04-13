@@ -106,8 +106,18 @@ export default function PrlFormPage() {
         deliveryDate: doc.deliveryDate,
         remarks: doc.remarks ?? '',
       });
+      if (doc.location) {
+        setLocation({ value: doc.location.id, label: `${doc.location.code} – ${doc.location.name}` });
+      }
+      if (doc.chargeCode) {
+        setChargeCode({ value: doc.chargeCode.id, label: `${doc.chargeCode.code} – ${doc.chargeCode.name}` });
+      }
       if (doc.lines) {
-        setLineRows(doc.lines.map((l) => ({ ...l, _rowId: l.id })));
+        setLineRows(doc.lines.map((l) => ({
+          ...l,
+          _rowId: l.id,
+          itemLabel: l.item ? `${l.item.code} – ${l.item.description}` : undefined,
+        })));
       }
     }
   }, [doc, reset]);
@@ -185,6 +195,22 @@ export default function PrlFormPage() {
   const filteredLines = lineSearch
     ? lineRows.filter((r) => r.itemLabel?.toLowerCase().includes(lineSearch.toLowerCase()))
     : lineRows;
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSubmit(onSubmit)();
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [handleSubmit, onSubmit]
+  );
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
 
   if (!isNew && isLoading) {
     return <div className="flex items-center justify-center h-64"><p className="text-gray-400 text-sm">Loading…</p></div>;
@@ -396,22 +422,6 @@ export default function PrlFormPage() {
     { id: 'lead-time', label: 'Lead Time', content: placeholderTab('Lead Time').content },
     { id: 'enquiry', label: 'Enquiry', content: enquiryContent },
   ];
-
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        handleSubmit(onSubmit)();
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [handleSubmit, onSubmit]
-  );
-
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
 
   return (
     <div className="flex flex-col h-full">

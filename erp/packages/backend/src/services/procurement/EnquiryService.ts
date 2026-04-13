@@ -49,7 +49,7 @@ export class EnquiryService {
           include: {
             lines: {
               include: {
-                item: { select: { code: true, name: true } },
+                item: { select: { code: true, description: true } },
                 uom: { select: { code: true, name: true } },
               },
             },

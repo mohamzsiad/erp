@@ -272,7 +272,7 @@ export class ReportService {
       { supplierId: string; avgLeadDays: number | null }[]
     >`
       SELECT "supplierId",
-             AVG(EXTRACT(EPOCH FROM ("deliveryDate" - "docDate")) / 86400)::FLOAT AS "avgLeadDays"
+             AVG("deliveryDate" - "docDate") AS "avgLeadDays"
       FROM purchase_orders
       WHERE "companyId" = ${filters.companyId}
         AND "deliveryDate" IS NOT NULL
@@ -362,7 +362,7 @@ export class ReportService {
         u.code          AS "uomCode",
         0               AS "plannedLeadDays",
         COALESCE(
-          AVG(EXTRACT(EPOCH FROM (po."deliveryDate" - po."docDate")) / 86400),
+          AVG(po."deliveryDate" - po."docDate"),
           0
         )::FLOAT         AS "actualLeadDays",
         COUNT(po.id)::INT AS "poCount"

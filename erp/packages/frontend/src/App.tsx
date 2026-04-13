@@ -16,13 +16,8 @@ const ProcurementRouter = lazy(() => import('./pages/procurement/ProcurementRout
 // ── Inventory ─────────────────────────────────────────────────────────────────
 const InventoryRouter = lazy(() => import('./pages/inventory/InventoryRouter'));
 
-// ── Finance (Prompt 7) ────────────────────────────────────────────────────────
-const FinancePlaceholder = () => (
-  <div className="p-6">
-    <h2 className="text-lg font-semibold text-gray-700">Finance Module</h2>
-    <p className="text-gray-500 text-sm mt-1">This module will be built in Prompt 7.</p>
-  </div>
-);
+// ── Finance ───────────────────────────────────────────────────────────────────
+const FinanceRouter = lazy(() => import('./pages/finance/FinanceRouter'));
 
 // ── Admin (Prompt 9) ──────────────────────────────────────────────────────────
 const AdminPlaceholder = () => (
@@ -83,7 +78,7 @@ export default function App() {
             path="/finance/*"
             element={
               <ProtectedRoute requireModule="FINANCE">
-                <FinancePlaceholder />
+                <FinanceRouter />
               </ProtectedRoute>
             }
           />

@@ -7,6 +7,8 @@ import type {
   MrlLine,
   PurchaseRequisition,
   PrlLine,
+  PurchaseEnquiry,
+  PurchaseQuotation,
   PurchaseOrder,
   PoLine,
 } from '@clouderp/shared';
@@ -35,6 +37,12 @@ export const PO_KEYS = {
   all: ['po'] as const,
   list: (params: object) => ['po', 'list', params] as const,
   detail: (id: string) => ['po', id] as const,
+};
+
+export const ENQUIRY_KEYS = {
+  all: ['enquiry'] as const,
+  list: (params: object) => ['enquiry', 'list', params] as const,
+  detail: (id: string) => ['enquiry', id] as const,
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -330,6 +338,95 @@ export const useUpdatePrl = (id: string) => {
   });
 };
 
+// ── Enquiry / RFQ API ─────────────────────────────────────────────────────────
+export const enquiryApi = {
+  list: (params: { status?: string; page?: number; limit?: number }) =>
+    api.get<PaginatedResponse<PurchaseEnquiry>>('/procurement/enquiry', { params }).then((r) => r.data),
+
+  getById: (id: string) =>
+    api.get<PurchaseEnquiry>(`/procurement/enquiry/${id}`).then((r) => r.data),
+
+  send: (id: string) =>
+    api.post(`/procurement/enquiry/${id}/send`).then((r) => r.data),
+
+  close: (id: string) =>
+    api.post(`/procurement/enquiry/${id}/close`).then((r) => r.data),
+};
+
+export const useEnquiryList = (params: { status?: string; page?: number; limit?: number }) =>
+  useQuery({
+    queryKey: ENQUIRY_KEYS.list(params),
+    queryFn: () => enquiryApi.list(params),
+  });
+
+export const useEnquiry = (id: string | undefined) =>
+  useQuery({
+    queryKey: ENQUIRY_KEYS.detail(id ?? ''),
+    queryFn: () => enquiryApi.getById(id!),
+    enabled: !!id,
+  });
+
+export const useSendEnquiry = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => enquiryApi.send(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ENQUIRY_KEYS.detail(id) }),
+  });
+};
+
+export const useCloseEnquiry = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => enquiryApi.close(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ENQUIRY_KEYS.detail(id) }),
+  });
+};
+
+// ── Quotation API ─────────────────────────────────────────────────────────────
+export const QUOTATION_KEYS = {
+  all: ['quotation'] as const,
+  list: (params: object) => ['quotation', 'list', params] as const,
+  detail: (id: string) => ['quotation', id] as const,
+};
+
+export const quotationApi = {
+  list: (params: { supplierId?: string; enquiryId?: string; page?: number; limit?: number }) =>
+    api.get<PaginatedResponse<PurchaseQuotation>>('/procurement/quotation', { params }).then((r) => r.data),
+
+  getById: (id: string) =>
+    api.get<PurchaseQuotation>(`/procurement/quotation/${id}`).then((r) => r.data),
+
+  create: (data: { supplierId: string; enquiryId: string; validityDate: string; currencyId: string; paymentTerms?: string; totalAmount: number }) =>
+    api.post<PurchaseQuotation>('/procurement/quotation', data).then((r) => r.data),
+
+  award: (id: string) =>
+    api.post(`/procurement/quotation/${id}/award`).then((r) => r.data),
+};
+
+export const useQuotationList = (params: { supplierId?: string; enquiryId?: string; page?: number; limit?: number }) =>
+  useQuery({
+    queryKey: QUOTATION_KEYS.list(params),
+    queryFn: () => quotationApi.list(params),
+  });
+
+export const useQuotation = (id: string | undefined) =>
+  useQuery({
+    queryKey: QUOTATION_KEYS.detail(id ?? ''),
+    queryFn: () => quotationApi.getById(id!),
+    enabled: !!id,
+  });
+
+export const useAwardQuotation = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => quotationApi.award(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QUOTATION_KEYS.detail(id) });
+      qc.invalidateQueries({ queryKey: QUOTATION_KEYS.all });
+    },
+  });
+};
+
 // ── PO API ────────────────────────────────────────────────────────────────────
 export const poApi = {
   list: (params: DocListParams) =>
@@ -425,12 +522,12 @@ export const useCancelPo = (id: string) => {
   });
 };
 
-// ── Inventory Stock Summary (used by MRL/PRL tiles) ───────────────────────────
+// ── Procurement Stock Tiles (used by MRL form StatusTiles sidebar) ────────────
 export const useStockSummary = (locationId: string | undefined) =>
   useQuery({
-    queryKey: ['inventory', 'stock-summary', locationId],
+    queryKey: ['procurement', 'stock-tiles', locationId],
     queryFn: () =>
-      api.get<StockSummaryResponse>('/inventory/stock-summary', { params: { locationId } }).then((r) => r.data),
+      api.get<StockSummaryResponse>('/procurement/mrl/stock-tiles', { params: { locationId } }).then((r) => r.data),
     enabled: !!locationId,
   });
 

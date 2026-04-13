@@ -183,8 +183,9 @@ const NAV_TREE: NavItem[] = [
         label: 'Accounts Payable',
         icon: <Wallet size={14} />,
         children: [
-          { id: 'ap-invoices', label: 'AP Invoices', path: '/finance/ap/invoices', icon: <Receipt size={13} /> },
-          { id: 'ap-payments', label: 'Payments', path: '/finance/ap/payments', icon: <DollarSign size={13} /> },
+          { id: 'ap-invoices',     label: 'AP Invoices',    path: '/finance/ap/invoices',     icon: <Receipt size={13} /> },
+          { id: 'ap-payments',     label: 'AP Payments',    path: '/finance/ap/payments',     icon: <DollarSign size={13} /> },
+          { id: 'ap-new-payment',  label: 'New Payment',    path: '/finance/ap/payments/new', icon: <DollarSign size={13} /> },
         ],
       },
       {
@@ -202,6 +203,17 @@ const NAV_TREE: NavItem[] = [
         icon: <TrendingUp size={14} />,
         children: [
           { id: 'budget-list', label: 'Budget Plans', path: '/finance/budgets', icon: <FileText size={13} /> },
+        ],
+      },
+      {
+        id: 'fin-reports',
+        label: 'Reports',
+        icon: <BarChart2 size={14} />,
+        children: [
+          { id: 'fin-rpt-trial-balance',    label: 'Trial Balance',    path: '/finance/reports/trial-balance',    icon: <TrendingUp size={13} /> },
+          { id: 'fin-rpt-pnl',             label: 'Profit & Loss',    path: '/finance/reports/pnl',              icon: <TrendingUp size={13} /> },
+          { id: 'fin-rpt-balance-sheet',   label: 'Balance Sheet',    path: '/finance/reports/balance-sheet',    icon: <TrendingUp size={13} /> },
+          { id: 'fin-rpt-budget-vs-actual',label: 'Budget vs Actual', path: '/finance/reports/budget-vs-actual', icon: <TrendingUp size={13} /> },
         ],
       },
     ],

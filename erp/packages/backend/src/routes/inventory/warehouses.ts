@@ -3,10 +3,10 @@ import { WarehouseService } from '../../services/inventory/WarehouseService.js';
 import { requirePermission } from '../../middleware/authenticate.js';
 
 const PERM = {
-  VIEW:   requirePermission('INVENTORY', 'WAREHOUSE', 'VIEW'),
-  CREATE: requirePermission('INVENTORY', 'WAREHOUSE', 'CREATE'),
-  EDIT:   requirePermission('INVENTORY', 'WAREHOUSE', 'EDIT'),
-  DELETE: requirePermission('INVENTORY', 'WAREHOUSE', 'DELETE'),
+  VIEW:   requirePermission('INVENTORY', 'WAREHOUSES', 'VIEW'),
+  CREATE: requirePermission('INVENTORY', 'WAREHOUSES', 'CREATE'),
+  EDIT:   requirePermission('INVENTORY', 'WAREHOUSES', 'EDIT'),
+  DELETE: requirePermission('INVENTORY', 'WAREHOUSES', 'DELETE'),
 };
 
 export default async function warehouseRoutes(fastify: FastifyInstance) {

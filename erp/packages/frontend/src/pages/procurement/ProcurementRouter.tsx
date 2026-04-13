@@ -8,6 +8,10 @@ const MrlListPage = lazy(() => import('./mrl/MrlListPage'));
 const MrlFormPage = lazy(() => import('./mrl/MrlFormPage'));
 const PrlListPage = lazy(() => import('./prl/PrlListPage'));
 const PrlFormPage = lazy(() => import('./prl/PrlFormPage'));
+const RfqListPage = lazy(() => import('./rfq/RfqListPage'));
+const RfqFormPage = lazy(() => import('./rfq/RfqFormPage'));
+const QuotationListPage = lazy(() => import('./quotations/QuotationListPage'));
+const QuotationFormPage = lazy(() => import('./quotations/QuotationFormPage'));
 const PoListPage = lazy(() => import('./po/PoListPage'));
 const PoFormPage = lazy(() => import('./po/PoFormPage'));
 
@@ -46,6 +50,14 @@ export default function ProcurementRouter() {
         <Route path="prl" element={<PrlListPage />} />
         <Route path="prl/new" element={<PrlFormPage />} />
         <Route path="prl/:id" element={<PrlFormPage />} />
+
+        {/* Purchase Enquiry / RFQ */}
+        <Route path="rfq" element={<RfqListPage />} />
+        <Route path="rfq/:id" element={<RfqFormPage />} />
+
+        {/* Supplier Quotations */}
+        <Route path="quotations" element={<QuotationListPage />} />
+        <Route path="quotations/:id" element={<QuotationFormPage />} />
 
         {/* Purchase Order */}
         <Route path="po" element={<PoListPage />} />

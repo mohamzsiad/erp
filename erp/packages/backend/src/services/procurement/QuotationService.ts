@@ -65,7 +65,7 @@ export class QuotationService {
           include: {
             lines: {
               include: {
-                item: { select: { code: true, name: true } },
+                item: { select: { code: true, description: true } },
                 uom: { select: { code: true } },
               },
             },
@@ -89,7 +89,7 @@ export class QuotationService {
     const comparison = prlLines.map((line) => ({
       lineId: line.id,
       itemCode: line.item.code,
-      itemName: line.item.name,
+      itemName: line.item.description,
       uom: line.uom.code,
       requestedQty: Number(line.requestedQty),
       supplierPrices: quotations.map((pq) => ({

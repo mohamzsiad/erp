@@ -3,10 +3,10 @@ import { AdjustmentService } from '../../services/inventory/AdjustmentService.js
 import { requirePermission } from '../../middleware/authenticate.js';
 
 const PERM = {
-  VIEW:    requirePermission('INVENTORY', 'ADJUSTMENT', 'VIEW'),
-  CREATE:  requirePermission('INVENTORY', 'ADJUSTMENT', 'CREATE'),
-  SUBMIT:  requirePermission('INVENTORY', 'ADJUSTMENT', 'EDIT'),
-  APPROVE: requirePermission('INVENTORY', 'ADJUSTMENT', 'APPROVE'),
+  VIEW:    requirePermission('INVENTORY', 'STOCK_ADJUSTMENT', 'VIEW'),
+  CREATE:  requirePermission('INVENTORY', 'STOCK_ADJUSTMENT', 'CREATE'),
+  SUBMIT:  requirePermission('INVENTORY', 'STOCK_ADJUSTMENT', 'EDIT'),
+  APPROVE: requirePermission('INVENTORY', 'STOCK_ADJUSTMENT', 'APPROVE'),
 };
 
 const adjLineSchema = {

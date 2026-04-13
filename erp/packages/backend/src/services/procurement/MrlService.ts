@@ -99,7 +99,7 @@ export class MrlService {
         chargeCode: true,
         lines: {
           include: {
-            item: { select: { id: true, code: true, name: true, trackingType: true } },
+            item: { select: { id: true, code: true, description: true, trackingType: true } },
             uom: { select: { id: true, code: true, name: true } },
           },
           orderBy: { lineNo: 'asc' },

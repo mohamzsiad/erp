@@ -86,7 +86,7 @@ export class PrlService {
         chargeCode: true,
         lines: {
           include: {
-            item: { select: { id: true, code: true, name: true } },
+            item: { select: { id: true, code: true, description: true } },
             uom: { select: { id: true, code: true, name: true } },
           },
           orderBy: { lineNo: 'asc' },
@@ -243,7 +243,7 @@ export class PrlService {
       include: {
         lines: {
           include: {
-            item: { select: { code: true, name: true } },
+            item: { select: { code: true, description: true } },
           },
         },
         enquiries: {

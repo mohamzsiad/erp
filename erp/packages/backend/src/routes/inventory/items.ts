@@ -3,10 +3,10 @@ import { ItemService } from '../../services/inventory/ItemService.js';
 import { requirePermission } from '../../middleware/authenticate.js';
 
 const PERM = {
-  VIEW:   requirePermission('INVENTORY', 'ITEM', 'VIEW'),
-  CREATE: requirePermission('INVENTORY', 'ITEM', 'CREATE'),
-  EDIT:   requirePermission('INVENTORY', 'ITEM', 'EDIT'),
-  DELETE: requirePermission('INVENTORY', 'ITEM', 'DELETE'),
+  VIEW:   requirePermission('INVENTORY', 'ITEMS', 'VIEW'),
+  CREATE: requirePermission('INVENTORY', 'ITEMS', 'CREATE'),
+  EDIT:   requirePermission('INVENTORY', 'ITEMS', 'EDIT'),
+  DELETE: requirePermission('INVENTORY', 'ITEMS', 'DELETE'),
 };
 
 export default async function itemRoutes(fastify: FastifyInstance) {

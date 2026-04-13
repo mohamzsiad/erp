@@ -95,6 +95,8 @@ export interface PrlLine {
   chargeCodeId: string;
   lineNo: number;
   isShortClosed: boolean;
+  item?: { id: string; code: string; description: string };
+  uom?: { id: string; code: string; name: string };
 }
 
 export interface PurchaseRequisition extends AuditInfo {
@@ -110,10 +112,20 @@ export interface PurchaseRequisition extends AuditInfo {
   mrlId: string | null;
   createdById: string;
   approvedById: string | null;
+  location?: { id: string; code: string; name: string };
+  chargeCode?: { id: string; code: string; name: string };
   lines?: PrlLine[];
 }
 
 // ── Purchase Enquiry / RFQ ────────────────────────────────────────────────────
+export interface EnquiryQuotationSummary {
+  id: string;
+  supplierId: string;
+  status: string;
+  supplier?: { code: string; name: string };
+  currency?: { code: string };
+}
+
 export interface PurchaseEnquiry extends AuditInfo {
   id: string;
   companyId: string;
@@ -122,6 +134,11 @@ export interface PurchaseEnquiry extends AuditInfo {
   prlId: string | null;
   status: string;
   createdById: string;
+  prl?: {
+    docNo: string;
+    lines?: PrlLine[];
+  };
+  quotations?: EnquiryQuotationSummary[];
 }
 
 // ── Purchase Quotation ────────────────────────────────────────────────────────
@@ -137,6 +154,9 @@ export interface PurchaseQuotation extends AuditInfo {
   status: string;
   totalAmount: number;
   createdById: string;
+  supplier?: { id: string; code: string; name: string };
+  currency?: { id: string; code: string; name?: string };
+  enquiry?: { id: string; docNo: string; prl?: { docNo: string } };
 }
 
 // ── Purchase Order ────────────────────────────────────────────────────────────
