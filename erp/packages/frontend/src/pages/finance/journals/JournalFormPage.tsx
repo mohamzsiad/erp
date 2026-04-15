@@ -57,7 +57,7 @@ function AccountLookupEditor({ value, onCommit, onCancel }: { value: string; onC
 export default function JournalFormPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { addToast } = useToast();
+  const toast = useToast();
   const isNew = !id || id === 'new';
 
   const { data: journal } = useJournalDetail(id ?? '');
@@ -188,10 +188,10 @@ export default function JournalFormPage() {
 
   // ── Post / Reverse ─────────────────────────────────────────────────────────
   const handlePost = async () => {
-    if (!description) { addToast({ type: 'error', message: 'Description is required' }); return; }
-    if (!isBalanced)  { addToast({ type: 'error', message: `Journal is not balanced (difference: ${fmt(difference)})` }); return; }
+    if (!description) { toast.error('Description is required'); return; }
+    if (!isBalanced)  { toast.error(`Journal is not balanced (difference: ${fmt(difference)})`); return; }
     const validLines = lines.filter((l) => l.accountId && (l.debit > 0 || l.credit > 0));
-    if (validLines.length < 2) { addToast({ type: 'error', message: 'At least 2 lines with accounts required' }); return; }
+    if (validLines.length < 2) { toast.error('At least 2 lines with accounts required'); return; }
     try {
       const je = await createMut.mutateAsync({
         entryDate,
@@ -207,10 +207,10 @@ export default function JournalFormPage() {
           lineNo: i + 1,
         })),
       });
-      addToast({ type: 'success', message: `Journal ${je.docNo} posted` });
+      toast.success(`Journal ${je.docNo} posted`);
       navigate(`/finance/journals/${je.id}`);
     } catch (e: any) {
-      addToast({ type: 'error', message: e?.response?.data?.message ?? 'Post failed' });
+      toast.error(e?.response?.data?.message ?? 'Post failed');
     }
   };
 
@@ -218,10 +218,10 @@ export default function JournalFormPage() {
     if (!journal || !confirm('Reverse this journal entry?')) return;
     try {
       const rev = await reverseMut.mutateAsync({ id: journal.id });
-      addToast({ type: 'success', message: `Reversal ${rev.docNo} posted` });
+      toast.success(`Reversal ${rev.docNo} posted`);
       navigate(`/finance/journals/${rev.id}`);
     } catch (e: any) {
-      addToast({ type: 'error', message: e?.response?.data?.message ?? 'Reverse failed' });
+      toast.error(e?.response?.data?.message ?? 'Reverse failed');
     }
   };
 

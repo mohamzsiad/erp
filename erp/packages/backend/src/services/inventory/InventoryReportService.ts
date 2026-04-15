@@ -29,10 +29,12 @@ export class InventoryReportService {
   async getStockBalance(f: InvReportFilters) {
     const balances = await this.prisma.stockBalance.findMany({
       where: {
-        companyId:   f.companyId,
+        item: {
+          companyId: f.companyId,
+          ...(f.categoryId && { categoryId: f.categoryId }),
+        },
         ...(f.warehouseId && { warehouseId: f.warehouseId }),
         ...(f.itemId      && { itemId:      f.itemId      }),
-        ...(f.categoryId  && { item: { categoryId: f.categoryId } }),
       },
       include: {
         item:      { include: { category: true, uom: true } },
@@ -63,10 +65,12 @@ export class InventoryReportService {
   async getStockAging(f: InvReportFilters) {
     const balances = await this.prisma.stockBalance.findMany({
       where: {
-        companyId:  f.companyId,
-        qtyOnHand:  { gt: 0 },
+        qtyOnHand: { gt: 0 },
+        item: {
+          companyId: f.companyId,
+          ...(f.categoryId && { categoryId: f.categoryId }),
+        },
         ...(f.warehouseId && { warehouseId: f.warehouseId }),
-        ...(f.categoryId  && { item: { categoryId: f.categoryId } }),
         ...(f.itemId      && { itemId: f.itemId }),
       },
       include: {
@@ -130,10 +134,12 @@ export class InventoryReportService {
     // Dead: positive balance but no movement since cutoff
     const allBalances = await this.prisma.stockBalance.findMany({
       where: {
-        companyId:  f.companyId,
-        qtyOnHand:  { gt: 0 },
+        qtyOnHand: { gt: 0 },
+        item: {
+          companyId: f.companyId,
+          ...(f.categoryId && { categoryId: f.categoryId }),
+        },
         ...(f.warehouseId && { warehouseId: f.warehouseId }),
-        ...(f.categoryId  && { item: { categoryId: f.categoryId } }),
         ...(f.itemId      && { itemId: f.itemId }),
       },
       include: { item: { include: { category: true, uom: true } }, warehouse: true },
@@ -282,7 +288,6 @@ export class InventoryReportService {
         category: true,
         stockBalances: {
           where: {
-            companyId:   f.companyId,
             ...(f.warehouseId && { warehouseId: f.warehouseId }),
           },
           include: { warehouse: true },
@@ -325,10 +330,12 @@ export class InventoryReportService {
   async getValuation(f: InvReportFilters) {
     const balances = await this.prisma.stockBalance.findMany({
       where: {
-        companyId:  f.companyId,
-        qtyOnHand:  { gt: 0 },
+        qtyOnHand: { gt: 0 },
+        item: {
+          companyId: f.companyId,
+          ...(f.categoryId && { categoryId: f.categoryId }),
+        },
         ...(f.warehouseId && { warehouseId: f.warehouseId }),
-        ...(f.categoryId  && { item: { categoryId: f.categoryId } }),
         ...(f.itemId      && { itemId: f.itemId }),
       },
       include: {

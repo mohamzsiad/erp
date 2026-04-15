@@ -162,7 +162,7 @@ async function main() {
       { module: Module.PROCUREMENT, resource: r, action: PermissionAction.VOID },
     ])).flat(),
     { module: Module.PROCUREMENT, resource: 'REPORTS', action: PermissionAction.VIEW },
-    ...['ITEMS', 'WAREHOUSES', 'GRN', 'STOCK_ISSUE', 'STOCK_TRANSFER', 'STOCK_ADJUSTMENT', 'PHYSICAL_COUNT'].map(r => ([
+    ...['ITEMS', 'WAREHOUSES', 'BIN', 'GRN', 'STOCK_ISSUE', 'STOCK_TRANSFER', 'STOCK_ADJUSTMENT', 'PHYSICAL_COUNT'].map(r => ([
       { module: Module.INVENTORY, resource: r, action: PermissionAction.VIEW },
       { module: Module.INVENTORY, resource: r, action: PermissionAction.CREATE },
       { module: Module.INVENTORY, resource: r, action: PermissionAction.EDIT },
@@ -170,6 +170,7 @@ async function main() {
       { module: Module.INVENTORY, resource: r, action: PermissionAction.DELETE },
     ])).flat(),
     { module: Module.INVENTORY, resource: 'REPORTS', action: PermissionAction.VIEW },
+    { module: Module.INVENTORY, resource: 'STOCK_SUMMARY', action: PermissionAction.VIEW },
     ...['GL_ACCOUNT', 'COST_CENTER', 'JOURNAL', 'AP', 'AR', 'BUDGET', 'PERIOD', 'ACCOUNT_MAPPING', 'REPORT'].map(r => ([
       { module: Module.FINANCE, resource: r, action: PermissionAction.VIEW },
       { module: Module.FINANCE, resource: r, action: PermissionAction.CREATE },
@@ -195,7 +196,7 @@ async function main() {
   ];
 
   const invMgrPerms: PermDef[] = [
-    ...['ITEMS', 'WAREHOUSES', 'GRN', 'STOCK_ISSUE', 'STOCK_TRANSFER', 'STOCK_ADJUSTMENT', 'PHYSICAL_COUNT'].map(r => ([
+    ...['ITEMS', 'WAREHOUSES', 'BIN', 'GRN', 'STOCK_ISSUE', 'STOCK_TRANSFER', 'STOCK_ADJUSTMENT', 'PHYSICAL_COUNT'].map(r => ([
       { module: Module.INVENTORY, resource: r, action: PermissionAction.VIEW },
       { module: Module.INVENTORY, resource: r, action: PermissionAction.CREATE },
       { module: Module.INVENTORY, resource: r, action: PermissionAction.EDIT },
@@ -203,6 +204,7 @@ async function main() {
       { module: Module.INVENTORY, resource: r, action: PermissionAction.DELETE },
     ])).flat(),
     { module: Module.INVENTORY, resource: 'REPORTS', action: PermissionAction.VIEW },
+    { module: Module.INVENTORY, resource: 'STOCK_SUMMARY', action: PermissionAction.VIEW },
     // Read-only procurement
     ...['SUPPLIERS', 'PO'].map(r => ([
       { module: Module.PROCUREMENT, resource: r, action: PermissionAction.VIEW },

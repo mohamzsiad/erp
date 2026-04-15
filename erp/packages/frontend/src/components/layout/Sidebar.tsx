@@ -213,6 +213,8 @@ const NAV_TREE: NavItem[] = [
           { id: 'fin-rpt-trial-balance',    label: 'Trial Balance',    path: '/finance/reports/trial-balance',    icon: <TrendingUp size={13} /> },
           { id: 'fin-rpt-pnl',             label: 'Profit & Loss',    path: '/finance/reports/pnl',              icon: <TrendingUp size={13} /> },
           { id: 'fin-rpt-balance-sheet',   label: 'Balance Sheet',    path: '/finance/reports/balance-sheet',    icon: <TrendingUp size={13} /> },
+          { id: 'fin-rpt-supplier-aging',  label: 'Supplier Aging',   path: '/finance/reports/supplier-aging',   icon: <TrendingUp size={13} /> },
+          { id: 'fin-rpt-customer-aging',  label: 'Customer Aging',   path: '/finance/reports/customer-aging',   icon: <TrendingUp size={13} /> },
           { id: 'fin-rpt-budget-vs-actual',label: 'Budget vs Actual', path: '/finance/reports/budget-vs-actual', icon: <TrendingUp size={13} /> },
         ],
       },

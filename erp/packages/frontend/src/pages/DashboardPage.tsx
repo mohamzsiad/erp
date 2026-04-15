@@ -1,356 +1,457 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
-  ShoppingCart,
-  Package,
-  DollarSign,
-  Clock,
-  CheckCircle,
-  AlertTriangle,
-  BarChart2,
+  ShoppingCart, Package, DollarSign, Clock, AlertTriangle,
+  CheckCircle, TrendingUp, TrendingDown, LayoutDashboard, ListChecks,
+  PieChart, Activity, Loader2, RefreshCw, ExternalLink,
+  FileText, ClipboardList, Receipt, BookOpen, Boxes, ArrowRight, AlertCircle,
 } from 'lucide-react';
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Cell, PieChart as RPieChart, Pie, Legend,
 } from 'recharts';
-import type { ColDef } from 'ag-grid-community';
-import { useAuthStore } from '../store/authStore';
-import { workflowApi } from '../api/workflow';
-import type { WorkflowTask } from '../api/workflow';
-import { SummaryTile } from '../components/ui/SummaryTile';
-import DataGrid from '../components/ui/DataGrid';
-import { StatusBadge } from '../components/ui/StatusBadge';
 import { clsx } from 'clsx';
+import { useDashboardKpis, useWorkflowTasks } from '../api/dashboard';
+import type { KpiData, WorkflowTask } from '../api/dashboard';
+import { useAuthStore } from '../store/authStore';
 
-// ── Mock KPI data ────────────────────────────────────────────────────────────
-const SPEND_DATA = [
-  { month: 'Oct', spend: 142000 },
-  { month: 'Nov', spend: 189000 },
-  { month: 'Dec', spend: 97000 },
-  { month: 'Jan', spend: 215000 },
-  { month: 'Feb', spend: 178000 },
-  { month: 'Mar', spend: 234000 },
-];
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const fmt = (n: number, decimals = 0) =>
+  n.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 
-const STOCK_DATA = [
-  { name: 'Bearings', value: 120 },
-  { name: 'V-Belts', value: 45 },
-  { name: 'Seals', value: 88 },
-  { name: 'Filters', value: 32 },
-  { name: 'Lubricants', value: 67 },
-];
+const fmtK = (n: number) => {
+  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return fmt(n);
+};
 
-// ── Dashboard Tabs ────────────────────────────────────────────────────────────
-type DashboardTab = 'mywork' | '360' | 'portlets' | 'kpi';
+// ── KPI Card ──────────────────────────────────────────────────────────────────
+interface KpiCardProps {
+  title: string;
+  value: string;
+  subtitle?: string;
+  trend?: number;
+  icon: React.ReactNode;
+  color: string;
+  loading?: boolean;
+}
 
-const TABS: { id: DashboardTab; label: string }[] = [
-  { id: 'mywork', label: 'My Work' },
-  { id: '360', label: '360° View' },
-  { id: 'portlets', label: 'Portlets' },
-  { id: 'kpi', label: 'KPI Dashboard' },
-];
-
-// ── Workflow task grid columns ─────────────────────────────────────────────
-const TASK_COLUMNS: ColDef<WorkflowTask>[] = [
-  { field: 'docType', headerName: 'Type', width: 100 },
-  { field: 'docNo', headerName: 'Document #', width: 130 },
-  { field: 'subject', headerName: 'Subject', flex: 1 },
-  { field: 'requestedBy', headerName: 'Requested By', width: 150 },
-  {
-    field: 'requestedAt',
-    headerName: 'Date',
-    width: 130,
-    valueFormatter: (p) =>
-      p.value ? new Date(p.value).toLocaleDateString() : '',
-  },
-  {
-    field: 'priority',
-    headerName: 'Priority',
-    width: 100,
-    cellRenderer: (p: { value: string }) => (
-      <span
-        className={clsx(
-          'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
-          p.value === 'high' && 'bg-red-100 text-red-700',
-          p.value === 'medium' && 'bg-amber-100 text-amber-700',
-          p.value === 'low' && 'bg-gray-100 text-gray-600'
-        )}
-      >
-        {p.value}
-      </span>
-    ),
-  },
-  {
-    field: 'status',
-    headerName: 'Status',
-    width: 110,
-    cellRenderer: (p: { value: string }) => <StatusBadge status={p.value} />,
-  },
-];
-
-// ── My Work Tab ───────────────────────────────────────────────────────────────
-const MyWorkTab: React.FC = () => {
-  const { data, isLoading } = useQuery({
-    queryKey: ['workflow', 'my-tasks'],
-    queryFn: () => workflowApi.getMyTasks({ limit: 50 }),
-    staleTime: 60_000,
-  });
-
-  const tasks = data?.data ?? [];
-
+function KpiCard({ title, value, subtitle, trend, icon, color, loading }: KpiCardProps) {
   return (
-    <div className="p-4 flex flex-col gap-4">
-      {/* Summary row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <SummaryTile
-          title="Pending Approval"
-          value={tasks.filter((t: WorkflowTask) => t.status === 'PENDING').length}
-          icon={<Clock size={18} />}
-          color="amber"
-        />
-        <SummaryTile
-          title="Approved Today"
-          value={tasks.filter((t: WorkflowTask) => t.status === 'APPROVED').length}
-          icon={<CheckCircle size={18} />}
-          color="green"
-        />
-        <SummaryTile
-          title="High Priority"
-          value={tasks.filter((t: WorkflowTask) => t.priority === 'high').length}
-          icon={<AlertTriangle size={18} />}
-          color="red"
-        />
-        <SummaryTile
-          title="Total Tasks"
-          value={tasks.length}
-          icon={<BarChart2 size={18} />}
-          color="blue"
-        />
+    <div className={clsx('bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-2 shadow-sm', color)}>
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{title}</span>
+        <div className="p-1.5 rounded-lg bg-gray-50">{icon}</div>
+      </div>
+      {loading ? (
+        <div className="h-8 flex items-center"><Loader2 size={18} className="animate-spin text-gray-300" /></div>
+      ) : (
+        <>
+          <div className="text-2xl font-bold text-gray-800">{value}</div>
+          {(subtitle || trend !== undefined) && (
+            <div className="flex items-center gap-1.5">
+              {trend !== undefined && (
+                <span className={clsx('flex items-center text-xs font-medium', trend >= 0 ? 'text-green-600' : 'text-red-600')}>
+                  {trend >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                  {Math.abs(trend).toFixed(1)}%
+                </span>
+              )}
+              {subtitle && <span className="text-xs text-gray-400">{subtitle}</span>}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Work Summary Card ─────────────────────────────────────────────────────────
+function WorkSummaryCard({ label, count, icon, path, color }: { label: string; count: number; icon: React.ReactNode; path: string; color: string }) {
+  const navigate = useNavigate();
+  return (
+    <button
+      onClick={() => navigate(path)}
+      className={clsx('flex items-center gap-3 bg-white border rounded-lg p-3 hover:shadow-sm hover:border-blue-300 transition-all text-left', count > 0 ? 'border-gray-200' : 'border-gray-100 opacity-70')}
+    >
+      <div className={clsx('p-2 rounded-lg', color)}>{icon}</div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs text-gray-500">{label}</p>
+        <p className={clsx('text-lg font-bold', count > 0 ? 'text-gray-800' : 'text-gray-400')}>{count}</p>
+      </div>
+      {count > 0 && <ArrowRight size={14} className="text-gray-400" />}
+    </button>
+  );
+}
+
+// ── Priority Badge ────────────────────────────────────────────────────────────
+const PRI_COLORS: Record<string, string> = {
+  high:   'bg-red-100 text-red-700',
+  medium: 'bg-amber-100 text-amber-700',
+  low:    'bg-gray-100 text-gray-600',
+};
+const DOC_COLORS: Record<string, string> = {
+  MRL: 'bg-blue-100 text-blue-700',
+  PRL: 'bg-purple-100 text-purple-700',
+  PO:  'bg-green-100 text-green-700',
+  AP_INVOICE: 'bg-orange-100 text-orange-700',
+  GRN: 'bg-teal-100 text-teal-700',
+};
+
+// ── Chart colors ──────────────────────────────────────────────────────────────
+const CHART_COLORS = ['#1F4E79','#2563eb','#16a34a','#ea580c','#9333ea','#0891b2','#db2777','#ca8a04','#dc2626','#059669'];
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+const TABS = [
+  { id: 'work',     label: 'My Work',  icon: <ListChecks size={15} /> },
+  { id: 'kpi',      label: 'KPIs',     icon: <LayoutDashboard size={15} /> },
+  { id: '360',      label: '360° View',icon: <PieChart size={15} /> },
+  { id: 'activity', label: 'Trend',    icon: <Activity size={15} /> },
+];
+
+// ── My Work tab ───────────────────────────────────────────────────────────────
+interface WorkTabProps {
+  ws: KpiData['workSummary'] | undefined;
+  tasks: WorkflowTask[];
+  tasksFetching: boolean;
+}
+
+function WorkTab({ ws, tasks, tasksFetching }: WorkTabProps) {
+  const navigate = useNavigate();
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Work summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <WorkSummaryCard label="Pending MRLs"     count={ws?.pendingMrl ?? 0}         icon={<ClipboardList size={16} className="text-blue-600" />}   path="/procurement/mrl"        color="bg-blue-50" />
+        <WorkSummaryCard label="Pending PRLs"     count={ws?.pendingPrl ?? 0}         icon={<FileText      size={16} className="text-purple-600" />}  path="/procurement/prl"        color="bg-purple-50" />
+        <WorkSummaryCard label="Open POs"         count={ws?.openPos ?? 0}            icon={<ShoppingCart  size={16} className="text-green-600" />}   path="/procurement/po"         color="bg-green-50" />
+        <WorkSummaryCard label="AP Invoices"      count={ws?.pendingApInvoice ?? 0}   icon={<Receipt       size={16} className="text-orange-600" />}  path="/finance/ap/invoices"    color="bg-orange-50" />
+        <WorkSummaryCard label="Unposted Journals" count={ws?.unpostedJournals ?? 0}  icon={<BookOpen      size={16} className="text-red-600" />}     path="/finance/journals"       color="bg-red-50" />
+        <WorkSummaryCard label="Pending GRNs"     count={ws?.pendingGrn ?? 0}         icon={<Boxes         size={16} className="text-teal-600" />}    path="/inventory/grn"          color="bg-teal-50" />
       </div>
 
-      {/* Task grid */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-700">Pending Workflow Tasks</h3>
+      {/* Tasks table */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-700">Pending Approvals</h3>
+          <span className="text-xs text-gray-400">{tasks.length} items</span>
         </div>
-        <DataGrid
-          rowData={tasks}
-          columnDefs={TASK_COLUMNS}
-          height={340}
-          loading={isLoading}
-          getRowId={(row) => row.id}
-          pagination={false}
-        />
-      </div>
-    </div>
-  );
-};
-
-// ── 360 View Tab ─────────────────────────────────────────────────────────────
-const View360Tab: React.FC = () => {
-  const isModuleEnabled = useAuthStore((s) => s.isModuleEnabled);
-
-  const tiles = [
-    {
-      title: 'Open Purchase Orders',
-      value: '12',
-      subtitle: 'AED 1.24M total value',
-      icon: <ShoppingCart size={18} />,
-      color: 'blue' as const,
-      module: 'PROCUREMENT',
-    },
-    {
-      title: 'Items Below Reorder',
-      value: '7',
-      subtitle: 'Requires immediate attention',
-      icon: <Package size={18} />,
-      color: 'red' as const,
-      module: 'INVENTORY',
-    },
-    {
-      title: 'AP Outstanding',
-      value: 'AED 845K',
-      subtitle: '23 invoices pending',
-      icon: <DollarSign size={18} />,
-      color: 'amber' as const,
-      module: 'FINANCE',
-    },
-    {
-      title: 'Pending MRLs',
-      value: '8',
-      subtitle: 'Awaiting approval',
-      icon: <Clock size={18} />,
-      color: 'purple' as const,
-      module: 'PROCUREMENT',
-    },
-  ];
-
-  return (
-    <div className="p-4">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {tiles.map((tile) =>
-          !tile.module || isModuleEnabled(tile.module) ? (
-            <SummaryTile key={tile.title} {...tile} />
-          ) : null
+        {tasksFetching && tasks.length === 0 ? (
+          <div className="flex items-center justify-center h-24"><Loader2 size={20} className="animate-spin text-gray-300" /></div>
+        ) : tasks.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-24 gap-1 text-gray-400">
+            <CheckCircle size={24} />
+            <p className="text-sm">No pending approvals</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+                  <th className="px-4 py-2.5 text-left font-medium">Type</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Doc No.</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Description</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Requested By</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Days Pending</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Priority</th>
+                  <th className="px-4 py-2.5 text-left font-medium" />
+                </tr>
+              </thead>
+              <tbody>
+                {tasks.map((t) => (
+                  <tr key={t.id} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-2.5">
+                      <span className={clsx('text-xs px-2 py-0.5 rounded-full font-semibold', DOC_COLORS[t.docType] ?? 'bg-gray-100 text-gray-600')}>
+                        {t.docType}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-gray-700">{t.docNo}</td>
+                    <td className="px-4 py-2.5 text-gray-600 text-xs max-w-[200px] truncate">{t.description}</td>
+                    <td className="px-4 py-2.5 text-gray-600 text-xs">{t.requestedBy}</td>
+                    <td className="px-4 py-2.5 text-xs font-medium text-gray-700">{t.daysPending}d</td>
+                    <td className="px-4 py-2.5">
+                      <span className={clsx('text-xs px-2 py-0.5 rounded-full font-medium capitalize', PRI_COLORS[t.priority])}>
+                        {t.priority}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <button
+                        onClick={() => navigate(t.path)}
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                      >
+                        Open <ExternalLink size={11} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
   );
-};
+}
 
-// ── Portlets Tab ─────────────────────────────────────────────────────────────
-const PortletsTab: React.FC = () => (
-  <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-    {/* Spend by Month */}
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">Monthly Procurement Spend (AED)</h3>
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={SPEND_DATA} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-          <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-          <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`} tick={{ fontSize: 11 }} />
-          <Tooltip formatter={(v: number) => [`AED ${v.toLocaleString()}`, 'Spend']} />
-          <Bar dataKey="spend" fill="#2E75B6" radius={[3, 3, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+// ── KPI tab ───────────────────────────────────────────────────────────────────
+interface KpiTabProps {
+  kpis: KpiData['kpis'] | undefined;
+  kpiFetching: boolean;
+  kpiError: boolean;
+}
 
-    {/* Stock by Category */}
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">Stock Quantity by Category</h3>
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart
-          data={STOCK_DATA}
-          layout="vertical"
-          margin={{ top: 4, right: 30, left: 60, bottom: 4 }}
-        >
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-          <XAxis type="number" tick={{ fontSize: 11 }} />
-          <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={55} />
-          <Tooltip />
-          <Bar dataKey="value" fill="#1F4E79" radius={[0, 3, 3, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  </div>
-);
+function KpiTab({ kpis, kpiFetching, kpiError }: KpiTabProps) {
+  if (kpiError && !kpis) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
+        <AlertCircle size={32} className="text-red-400" />
+        <p className="text-sm font-medium text-red-500">Failed to load KPI data</p>
+        <p className="text-xs text-gray-400">Check your connection or try refreshing</p>
+      </div>
+    );
+  }
 
-// ── KPI Tab ───────────────────────────────────────────────────────────────────
-const KPITab: React.FC = () => (
-  <div className="p-4">
-    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-      <SummaryTile
-        title="PO Cycle Time (avg)"
-        value="4.2 days"
-        subtitle="Target: 5 days"
-        trend={1}
-        trendLabel="0.8 days under target"
-        icon={<ShoppingCart size={18} />}
-        color="green"
-      />
-      <SummaryTile
-        title="Inventory Turnover"
-        value="6.4x"
-        subtitle="Last 12 months"
-        trend={1}
-        trendLabel="+0.3x vs prior year"
-        icon={<Package size={18} />}
-        color="blue"
-      />
-      <SummaryTile
-        title="On-Time Delivery"
-        value="91%"
-        subtitle="Supplier performance"
-        trend={-1}
-        trendLabel="-3% vs target"
-        icon={<CheckCircle size={18} />}
-        color="amber"
-      />
-      <SummaryTile
-        title="AP Days Outstanding"
-        value="38 days"
-        subtitle="Target: ≤45 days"
-        trend={1}
-        trendLabel="7 days below limit"
-        icon={<DollarSign size={18} />}
-        color="green"
-      />
-      <SummaryTile
-        title="Stockout Incidents"
-        value="3"
-        subtitle="This quarter"
-        trend={-1}
-        trendLabel="+1 vs last quarter"
-        icon={<AlertTriangle size={18} />}
-        color="red"
-      />
-      <SummaryTile
-        title="Budget Utilization"
-        value="73%"
-        subtitle="AED 2.1M of AED 2.9M"
-        icon={<BarChart2 size={18} />}
-        color="purple"
-      />
-    </div>
-  </div>
-);
-
-// ── Main Dashboard ────────────────────────────────────────────────────────────
-const DashboardPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<DashboardTab>('mywork');
-  const user = useAuthStore((s) => s.user);
-
-  const TAB_CONTENT: Record<DashboardTab, React.ReactNode> = {
-    mywork: <MyWorkTab />,
-    '360': <View360Tab />,
-    portlets: <PortletsTab />,
-    kpi: <KPITab />,
-  };
+  const bu = kpis?.budgetUtilization;
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <h1 className="text-lg font-semibold text-gray-800">
-          Welcome back, {user?.firstName ?? 'User'}
-        </h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          {new Date().toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          })}
-        </p>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <KpiCard
+        title="POs This Month"
+        value={kpis ? `${kpis.totalPoMtd.count} POs` : '—'}
+        subtitle={kpis ? `Value: ${fmtK(kpis.totalPoMtd.value)}` : undefined}
+        trend={kpis?.totalPoMtd?.trendPct}
+        icon={<ShoppingCart size={18} className="text-blue-600" />}
+        color="border-blue-100"
+        loading={kpiFetching && !kpis}
+      />
+      <KpiCard
+        title="Pending Approvals"
+        value={kpis ? String(kpis.pendingApproval.count) : '—'}
+        subtitle="across all modules"
+        icon={<AlertTriangle size={18} className="text-amber-600" />}
+        color="border-amber-100"
+        loading={kpiFetching && !kpis}
+      />
+      <KpiCard
+        title="Stock Value"
+        value={kpis ? fmtK(kpis.stockValue.value) : '—'}
+        subtitle="at average cost"
+        icon={<Package size={18} className="text-green-600" />}
+        color="border-green-100"
+        loading={kpiFetching && !kpis}
+      />
+      <KpiCard
+        title="Overdue Payables"
+        value={kpis ? `${kpis.overdueSupplierInvoices.count}` : '—'}
+        subtitle={kpis ? `Total: ${fmtK(kpis.overdueSupplierInvoices.total)}` : undefined}
+        icon={<Receipt size={18} className="text-red-600" />}
+        color="border-red-100"
+        loading={kpiFetching && !kpis}
+      />
+      <KpiCard
+        title="Budget Utilization"
+        value={bu ? `${bu.pct}%` : '—'}
+        subtitle={bu ? `${fmtK(bu.actual)} of ${fmtK(bu.budgeted)}` : undefined}
+        icon={<DollarSign size={18} className="text-purple-600" />}
+        color="border-purple-100"
+        loading={kpiFetching && !kpis}
+      />
+      <KpiCard
+        title="Avg. PO Lead Time"
+        value={kpis ? `${kpis.avgPoLeadTimeDays.days} days` : '—'}
+        subtitle="last 90 days"
+        icon={<Clock size={18} className="text-teal-600" />}
+        color="border-teal-100"
+        loading={kpiFetching && !kpis}
+      />
+
+      {/* Budget utilization bar */}
+      {bu && (
+        <div className="sm:col-span-2 lg:col-span-3 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Budget vs Actual (YTD)</h3>
+          <div className="flex items-center gap-4 mb-2">
+            <div className="flex-1">
+              <div className="flex justify-between text-xs text-gray-500 mb-1">
+                <span>Actual</span>
+                <span>{fmtK(bu.actual)} / {fmtK(bu.budgeted)}</span>
+              </div>
+              <div className="w-full h-4 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className={clsx('h-full rounded-full transition-all', bu.pct > 100 ? 'bg-red-500' : bu.pct > 80 ? 'bg-amber-500' : 'bg-green-500')}
+                  style={{ width: `${Math.min(bu.pct, 100)}%` }}
+                />
+              </div>
+            </div>
+            <div className={clsx('text-2xl font-bold', bu.pct > 100 ? 'text-red-600' : bu.pct > 80 ? 'text-amber-600' : 'text-green-600')}>
+              {bu.pct}%
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 360 tab ───────────────────────────────────────────────────────────────────
+interface View360TabProps {
+  kpiData: KpiData | undefined;
+  kpiFetching: boolean;
+  ws: KpiData['workSummary'] | undefined;
+}
+
+function View360Tab({ kpiData, kpiFetching, ws }: View360TabProps) {
+  const topSuppliers    = kpiData?.charts.topSuppliers ?? [];
+  const topSuppliersTop = topSuppliers.slice(0, 8);
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Top suppliers bar chart */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Top Suppliers by PO Value (YTD)</h3>
+        {kpiFetching && !kpiData ? (
+          <div className="flex items-center justify-center h-48"><Loader2 size={20} className="animate-spin text-gray-300" /></div>
+        ) : topSuppliersTop.length === 0 ? (
+          <div className="flex items-center justify-center h-48 text-gray-400 text-sm">No data</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={topSuppliersTop} layout="vertical" margin={{ left: 0, right: 16 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+              <XAxis type="number" tickFormatter={fmtK} tick={{ fontSize: 10 }} />
+              <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 10 }} />
+              <Tooltip formatter={(v: number) => [fmt(v, 0), 'PO Value']} />
+              <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                {topSuppliersTop.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
-      {/* Tab strip */}
-      <div className="flex border-b border-gray-200 bg-white">
-        {TABS.map((tab) => (
+      {/* Work summary pie */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Pending Work Distribution</h3>
+        {ws ? (() => {
+          const pieData = [
+            { name: 'MRLs',       value: ws.pendingMrl,       fill: '#1d4ed8' },
+            { name: 'PRLs',       value: ws.pendingPrl,       fill: '#7c3aed' },
+            { name: 'Open POs',   value: ws.openPos,          fill: '#16a34a' },
+            { name: 'AP Invoices',value: ws.pendingApInvoice, fill: '#ea580c' },
+            { name: 'Journals',   value: ws.unpostedJournals, fill: '#dc2626' },
+            { name: 'GRNs',       value: ws.pendingGrn,       fill: '#0d9488' },
+          ].filter(d => d.value > 0);
+          const total = pieData.reduce((a, d) => a + d.value, 0);
+          return total === 0 ? (
+            <div className="flex flex-col items-center justify-center h-48 gap-2 text-gray-400">
+              <CheckCircle size={28} />
+              <p className="text-sm">All clear!</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <RPieChart>
+                <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value">
+                  {pieData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                </Pie>
+                <Legend iconSize={10} iconType="circle" formatter={(v) => <span style={{ fontSize: 11 }}>{v}</span>} />
+                <Tooltip />
+              </RPieChart>
+            </ResponsiveContainer>
+          );
+        })() : (
+          <div className="flex items-center justify-center h-48"><Loader2 size={20} className="animate-spin text-gray-300" /></div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Trend tab ─────────────────────────────────────────────────────────────────
+interface TrendTabProps {
+  kpiData: KpiData | undefined;
+  kpiFetching: boolean;
+}
+
+function TrendTab({ kpiData, kpiFetching }: TrendTabProps) {
+  const monthly = kpiData?.charts.monthlyPurchase ?? [];
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+      <h3 className="text-sm font-semibold text-gray-700 mb-4">Monthly Purchase Trend (Last 12 Months)</h3>
+      {kpiFetching && !kpiData ? (
+        <div className="flex items-center justify-center h-64"><Loader2 size={24} className="animate-spin text-gray-300" /></div>
+      ) : monthly.length === 0 ? (
+        <div className="flex items-center justify-center h-64 text-gray-400 text-sm">No data</div>
+      ) : (
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={monthly} margin={{ top: 4, right: 16, bottom: 4, left: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+            <YAxis tickFormatter={fmtK} tick={{ fontSize: 11 }} />
+            <Tooltip formatter={(v: number) => [fmt(v, 0), 'PO Value']} />
+            <Line type="monotone" dataKey="value" stroke="#1F4E79" strokeWidth={2.5} dot={{ r: 3, fill: '#1F4E79' }} activeDot={{ r: 5 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+export default function DashboardPage() {
+  const user      = useAuthStore((s) => s.user);
+  const [tab, setTab] = useState('work');
+
+  const { data: kpiData, isFetching: kpiFetching, isError: kpiError, refetch: refetchKpis } = useDashboardKpis();
+  const { data: tasksData, isFetching: tasksFetching } = useWorkflowTasks();
+
+  const kpis  = kpiData?.kpis;
+  const ws    = kpiData?.workSummary;
+  const tasks = tasksData?.tasks ?? [];
+
+  return (
+    <div className="flex flex-col p-4 gap-4 min-h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-[#1F4E79]">
+            {user ? `Good day, ${user.firstName}` : 'Dashboard'}
+          </h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </p>
+        </div>
+        <button
+          onClick={() => refetchKpis()}
+          disabled={kpiFetching}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-50"
+        >
+          {kpiFetching ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+          Refresh
+        </button>
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+        {TABS.map((t) => (
           <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            key={t.id}
+            onClick={() => setTab(t.id)}
             className={clsx(
-              'px-5 py-3 text-sm font-medium border-b-2 transition-colors',
-              tab.id === activeTab
-                ? 'border-[#1F4E79] text-[#1F4E79]'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all',
+              tab === t.id
+                ? 'bg-white text-[#1F4E79] shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
             )}
           >
-            {tab.label}
+            {t.icon} {t.label}
           </button>
         ))}
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-auto bg-gray-50">{TAB_CONTENT[activeTab]}</div>
+      <div>
+        {tab === 'work'     && <WorkTab ws={ws} tasks={tasks} tasksFetching={tasksFetching} />}
+        {tab === 'kpi'      && <KpiTab kpis={kpis} kpiFetching={kpiFetching} kpiError={kpiError} />}
+        {tab === '360'      && <View360Tab kpiData={kpiData} kpiFetching={kpiFetching} ws={ws} />}
+        {tab === 'activity' && <TrendTab kpiData={kpiData} kpiFetching={kpiFetching} />}
+      </div>
     </div>
   );
-};
-
-export default DashboardPage;
+}

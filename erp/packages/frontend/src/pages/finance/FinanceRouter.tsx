@@ -12,6 +12,7 @@ const JournalFormPage    = lazy(() => import('./journals/JournalFormPage'));
 // ── AP ────────────────────────────────────────────────────────────────────────
 const ApInvoiceListPage  = lazy(() => import('./ap/ApInvoiceListPage'));
 const ApInvoiceFormPage  = lazy(() => import('./ap/ApInvoiceFormPage'));
+const ApPaymentListPage  = lazy(() => import('./ap/ApPaymentListPage'));
 const ApPaymentFormPage  = lazy(() => import('./ap/ApPaymentFormPage'));
 
 // ── Reports ───────────────────────────────────────────────────────────────────
@@ -19,6 +20,8 @@ const TrialBalancePage   = lazy(() => import('./reports/TrialBalancePage'));
 const PnlPage            = lazy(() => import('./reports/PnlPage'));
 const BalanceSheetPage   = lazy(() => import('./reports/BalanceSheetPage'));
 const BudgetVsActualPage = lazy(() => import('./reports/BudgetVsActualPage'));
+const SupplierAgingPage  = lazy(() => import('./reports/SupplierAgingPage'));
+const CustomerAgingPage  = lazy(() => import('./reports/CustomerAgingPage'));
 
 // ── Spinner ───────────────────────────────────────────────────────────────────
 const PageSpinner = () => (
@@ -48,7 +51,7 @@ export default function FinanceRouter() {
         <Route path="ap/invoices/:id"     element={<ApInvoiceFormPage />} />
 
         {/* AP — Payments */}
-        <Route path="ap/payments"         element={<ApInvoiceListPage />} />
+        <Route path="ap/payments"         element={<ApPaymentListPage />} />
         <Route path="ap/payments/new"     element={<ApPaymentFormPage />} />
 
         {/* Reports */}
@@ -56,6 +59,8 @@ export default function FinanceRouter() {
         <Route path="reports/pnl"              element={<PnlPage />} />
         <Route path="reports/balance-sheet"    element={<BalanceSheetPage />} />
         <Route path="reports/budget-vs-actual" element={<BudgetVsActualPage />} />
+        <Route path="reports/supplier-aging"   element={<SupplierAgingPage />} />
+        <Route path="reports/customer-aging"   element={<CustomerAgingPage />} />
 
         {/* Catch-all inside finance */}
         <Route path="*" element={<Navigate to="journals" replace />} />

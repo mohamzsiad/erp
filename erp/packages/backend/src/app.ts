@@ -1,13 +1,14 @@
 import Fastify from 'fastify';
-import cors from '@fastify/cors';
-import helmet from '@fastify/helmet';
 import sensible from '@fastify/sensible';
 import rateLimit from '@fastify/rate-limit';
+import websocket from '@fastify/websocket';
 
 import { config } from './config.js';
 import prismaPlugin from './plugins/prisma.js';
 import redisPlugin from './plugins/redis.js';
 import swaggerPlugin from './plugins/swagger.js';
+import securityPlugin from './plugins/security.js';
+import telemetryPlugin from './plugins/telemetry.js';
 import authRoutes from './routes/auth/index.js';
 import adminRoutes from './routes/admin/index.js';
 import procurementRoutes from './routes/procurement/index.js';
@@ -16,6 +17,7 @@ import notificationRoutes from './routes/notifications/index.js';
 import coreRoutes from './routes/core/index.js';
 import workflowRoutes from './routes/workflow/index.js';
 import financeRoutes from './routes/finance/index.js';
+import dashboardRoutes from './routes/dashboard/index.js';
 import { authenticateRequest } from './middleware/authenticate.js';
 
 export async function buildApp() {
@@ -43,22 +45,11 @@ export async function buildApp() {
     trustProxy: true,
   });
 
-  // ── Security ───────────────────────────────────────────────────────────────
-  await fastify.register(helmet, {
-    contentSecurityPolicy: false, // Disabled to allow Swagger UI
-  });
-
-  await fastify.register(cors, {
-    origin: config.CORS_ORIGINS.split(',').map((o) => o.trim()),
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  });
-
+  // ── Rate Limiting (global baseline — security plugin adds per-route limits) ─
   await fastify.register(rateLimit, {
     global: true,
-    max: 300,
+    max: config.RATE_LIMIT_PUBLIC,
     timeWindow: '1 minute',
-    redis: undefined, // Will be wired after redis plugin is registered
     keyGenerator: (req) => req.ip,
     errorResponseBuilder: () => ({
       statusCode: 429,
@@ -71,6 +62,11 @@ export async function buildApp() {
   await fastify.register(sensible);
   await fastify.register(prismaPlugin);
   await fastify.register(redisPlugin);
+  await fastify.register(websocket);
+
+  // ── Security & Telemetry ───────────────────────────────────────────────────
+  await fastify.register(telemetryPlugin);
+  await fastify.register(securityPlugin);
 
   // ── Swagger (development only) ─────────────────────────────────────────────
   if (config.NODE_ENV !== 'production') {
@@ -151,6 +147,9 @@ export async function buildApp() {
 
     // Finance routes
     await protectedApp.register(financeRoutes, { prefix: '/api/v1/finance' });
+
+    // Dashboard routes
+    await protectedApp.register(dashboardRoutes, { prefix: '/api/v1/dashboard' });
   });
 
   // ── Global Error Handler ───────────────────────────────────────────────────

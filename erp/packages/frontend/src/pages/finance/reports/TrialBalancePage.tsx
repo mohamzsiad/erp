@@ -1,154 +1,172 @@
-import React, { useState } from 'react';
-import { format, startOfMonth, endOfMonth } from 'date-fns';
-import { Download, RefreshCw } from 'lucide-react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
+import { format, startOfMonth } from 'date-fns';
+import { Download, RefreshCw, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { clsx } from 'clsx';
+import { AgGridReact } from 'ag-grid-react';
+import type { ColDef, RowClassParams } from 'ag-grid-community';
+import 'ag-grid-community/styles/ag-grid.css';
+import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { useTrialBalance } from '../../../api/finance';
+import { downloadExcel } from '../../../utils/excelExport';
 
-const TYPE_COLORS: Record<string, string> = {
-  ASSET:     'text-blue-700',
-  LIABILITY: 'text-red-700',
-  EQUITY:    'text-purple-700',
-  REVENUE:   'text-green-700',
-  EXPENSE:   'text-amber-700',
-};
+interface TbLine {
+  accountId: string; accountCode: string; accountName: string; accountType: string;
+  openDr: number; openCr: number; movDr: number; movCr: number; closDr: number; closCr: number;
+}
+interface TbRow extends TbLine { _rowType: 'data' | 'subtotal' | 'grandtotal'; }
 
-const TYPE_ORDER = ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'];
+const TYPES = ['ASSET','LIABILITY','EQUITY','REVENUE','EXPENSE'];
+const LABELS: Record<string,string> = { ASSET:'Assets', LIABILITY:'Liabilities', EQUITY:'Equity', REVENUE:'Revenue', EXPENSE:'Expenses' };
+const ROW_CLS: Record<string,string> = { ASSET:'ag-row-asset', LIABILITY:'ag-row-liability', EQUITY:'ag-row-equity', REVENUE:'ag-row-revenue', EXPENSE:'ag-row-expense' };
 
-const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+const fmt = (n: number | null | undefined) => (!n || n === 0) ? '' : n.toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3});
+const fmtA = (n: number) => n.toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3});
+
+function buildRows(lines: TbLine[], includeZero: boolean): TbRow[] {
+  const f = includeZero ? lines : lines.filter(l => l.openDr||l.openCr||l.movDr||l.movCr||l.closDr||l.closCr);
+  const result: TbRow[] = [];
+  for (const type of TYPES) {
+    const g = f.filter(l => l.accountType === type);
+    if (!g.length) continue;
+    result.push(...g.map(l => ({ ...l, _rowType: 'data' as const })));
+    const sub = g.reduce((a,l) => ({ openDr:a.openDr+l.openDr, openCr:a.openCr+l.openCr, movDr:a.movDr+l.movDr, movCr:a.movCr+l.movCr, closDr:a.closDr+l.closDr, closCr:a.closCr+l.closCr }), { openDr:0,openCr:0,movDr:0,movCr:0,closDr:0,closCr:0 });
+    result.push({ _rowType:'subtotal', accountId:`sub-${type}`, accountCode:'', accountName:`Total ${LABELS[type]??type}`, accountType:type, ...sub });
+  }
+  return result;
+}
 
 export default function TrialBalancePage() {
-  const now = new Date();
-  const [dateFrom, setDateFrom] = useState(format(startOfMonth(now), 'yyyy-MM-dd'));
-  const [dateTo,   setDateTo]   = useState(format(endOfMonth(now), 'yyyy-MM-dd'));
-  const [runReport, setRunReport] = useState(false);
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const fom   = format(startOfMonth(new Date()), 'yyyy-MM-dd');
+  const [dateFrom,    setDateFrom]    = useState(fom);
+  const [dateTo,      setDateTo]      = useState(today);
+  const [includeZero, setIncludeZero] = useState(false);
+  const [runParams,   setRunParams]   = useState<any>(null);
+  const gridRef = useRef<AgGridReact<TbRow>>(null);
 
-  const { data, isLoading, refetch } = useTrialBalance({ dateFrom, dateTo }, runReport);
+  const { data, isFetching } = useTrialBalance(
+    { dateFrom: runParams?.dateFrom, dateTo: runParams?.dateTo, includeZero },
+    !!runParams
+  );
 
-  const lines: any[] = data?.lines ?? [];
-  const grouped = TYPE_ORDER.reduce((acc, type) => {
-    acc[type] = lines.filter((l) => l.accountType === type);
-    return acc;
-  }, {} as Record<string, any[]>);
+  const rows = useMemo<TbRow[]>(() => {
+    if (!data?.lines) return [];
+    const built = buildRows(data.lines, includeZero);
+    if (data.totals) built.push({ _rowType:'grandtotal', accountId:'gt', accountCode:'', accountName:'GRAND TOTAL', accountType:'', openDr:data.totals.openDr, openCr:data.totals.openCr, movDr:data.totals.movDr, movCr:data.totals.movCr, closDr:data.totals.closDr, closCr:data.totals.closCr });
+    return built;
+  }, [data, includeZero]);
+
+  const isBalanced = useMemo(() => !data?.totals ? true : Math.abs(data.totals.openDr - data.totals.openCr) < 0.01 && Math.abs(data.totals.closDr - data.totals.closCr) < 0.01, [data]);
+
+  const colDefs = useMemo<ColDef<TbRow>[]>(() => [
+    { headerName:'Code',         field:'accountCode', width:90,  pinned:'left', cellStyle:{fontFamily:'monospace',fontSize:'12px'} },
+    { headerName:'Account Name', field:'accountName', flex:3, minWidth:220, pinned:'left',
+      cellRenderer:(p:any) => {
+        const r: TbRow = p.data;
+        if (r._rowType==='subtotal')   return <span className="font-semibold text-gray-700 pl-2">{r.accountName}</span>;
+        if (r._rowType==='grandtotal') return <span className="font-bold uppercase tracking-wide">{r.accountName}</span>;
+        return <span className="text-gray-800 text-xs pl-4">{r.accountName}</span>;
+      }
+    },
+    { headerName:'Opening Dr',   field:'openDr',  width:135, type:'numericColumn', valueFormatter:(p)=>fmt(p.value), headerClass:'tb-h-open',  cellStyle:{fontFamily:'monospace',fontSize:'12px',color:'#1e40af'} },
+    { headerName:'Opening Cr',   field:'openCr',  width:135, type:'numericColumn', valueFormatter:(p)=>fmt(p.value), headerClass:'tb-h-open',  cellStyle:{fontFamily:'monospace',fontSize:'12px',color:'#1e40af'} },
+    { headerName:'Movement Dr',  field:'movDr',   width:135, type:'numericColumn', valueFormatter:(p)=>fmt(p.value), headerClass:'tb-h-move',  cellStyle:{fontFamily:'monospace',fontSize:'12px',color:'#92400e'} },
+    { headerName:'Movement Cr',  field:'movCr',   width:135, type:'numericColumn', valueFormatter:(p)=>fmt(p.value), headerClass:'tb-h-move',  cellStyle:{fontFamily:'monospace',fontSize:'12px',color:'#92400e'} },
+    { headerName:'Closing Dr',   field:'closDr',  width:135, type:'numericColumn', valueFormatter:(p)=>fmt(p.value), headerClass:'tb-h-close', cellStyle:{fontFamily:'monospace',fontSize:'12px',color:'#166534'} },
+    { headerName:'Closing Cr',   field:'closCr',  width:135, type:'numericColumn', valueFormatter:(p)=>fmt(p.value), headerClass:'tb-h-close', cellStyle:{fontFamily:'monospace',fontSize:'12px',color:'#166534'} },
+  ], []);
+
+  const getRowClass = useCallback((p: RowClassParams<TbRow>) => {
+    if (!p.data) return '';
+    if (p.data._rowType === 'grandtotal') return 'ag-row-grandtotal';
+    if (p.data._rowType === 'subtotal')   return 'ag-row-subtotal';
+    return ROW_CLS[p.data.accountType] ?? '';
+  }, []);
+
+  const getRowHeight = useCallback((p:any) => { const r: TbRow = p.data; if (r?._rowType==='grandtotal') return 40; if (r?._rowType==='subtotal') return 34; return 28; }, []);
 
   const handleExport = () => {
-    const rows = lines.map((l) => [l.accountCode, l.accountName, l.accountType, l.totalDebit, l.totalCredit, l.netDebit, l.netCredit]);
-    const csv = [['Code', 'Name', 'Type', 'Total Debit', 'Total Credit', 'Net Debit', 'Net Credit'], ...rows]
-      .map((r) => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'trial-balance.csv'; a.click();
-    URL.revokeObjectURL(url);
+    if (!rows.length) return;
+    const boldSet = new Set(rows.map((r,i) => r._rowType!=='data' ? i : -1).filter(i=>i>=0));
+    downloadExcel([{
+      sheetName: `TB ${runParams?.dateFrom??''}`,
+      headers:['Code','Account Name','Opening Dr','Opening Cr','Movement Dr','Movement Cr','Closing Dr','Closing Cr'],
+      rows: rows.map((r,i) => ({ cells:[r.accountCode,r.accountName,r.openDr||null,r.openCr||null,r.movDr||null,r.movCr||null,r.closDr||null,r.closCr||null], bold:boldSet.has(i), isCurrency:[false,false,true,true,true,true,true,true] })),
+      currencyColIndices:[2,3,4,5,6,7], colWidths:[10,42,16,16,16,16,16,16],
+    }], `Trial_Balance_${runParams?.dateFrom??today}`);
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Filter bar */}
-      <div className="flex items-center gap-3 px-4 py-2 bg-white border-b border-gray-200">
-        <h2 className="text-sm font-semibold text-gray-800">Trial Balance</h2>
-        <div className="flex-1" />
-        <label className="text-xs text-gray-500">From</label>
-        <input type="date" className="erp-input w-36" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-        <label className="text-xs text-gray-500">To</label>
-        <input type="date" className="erp-input w-36" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-        <button
-          className="toolbar-btn bg-[#1F4E79] text-white border-[#1F4E79] hover:bg-[#163D5F]"
-          onClick={() => { setRunReport(true); refetch(); }}
-        >
-          Run Report
+    <div className="flex flex-col h-full min-h-0 p-4 gap-3">
+      <style>{`
+        .ag-row-asset{background-color:#eff6ff!important} .ag-row-liability{background-color:#faf5ff!important}
+        .ag-row-equity{background-color:#f0fdfa!important} .ag-row-revenue{background-color:#f0fdf4!important}
+        .ag-row-expense{background-color:#fff7ed!important} .ag-row-subtotal{background-color:#f1f5f9!important;font-weight:600}
+        .ag-row-grandtotal{background-color:#1F4E79!important;color:white!important;font-weight:700;font-size:13px}
+        .ag-row-grandtotal .ag-cell{color:white!important}
+        .tb-h-open .ag-header-cell-label{background-color:#dbeafe;color:#1e3a8a;padding:4px 8px}
+        .tb-h-move .ag-header-cell-label{background-color:#fef3c7;color:#78350f;padding:4px 8px}
+        .tb-h-close .ag-header-cell-label{background-color:#dcfce7;color:#14532d;padding:4px 8px}
+      `}</style>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-[#1F4E79]">Trial Balance</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Opening / Period Movement / Closing</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {data && (
+            <span className={clsx('flex items-center gap-1 text-sm font-medium px-3 py-1 rounded-full border', isBalanced ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200')}>
+              {isBalanced ? <><CheckCircle size={14}/> Balanced</> : <><XCircle size={14}/> Out of Balance</>}
+            </span>
+          )}
+          <button onClick={handleExport} disabled={!rows.length} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-40">
+            <Download size={14}/> Export Excel
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-lg p-3 flex flex-wrap items-end gap-4">
+        <div><label className="block text-xs font-medium text-gray-500 mb-1">Period From</label>
+          <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1F4E79]"/></div>
+        <div><label className="block text-xs font-medium text-gray-500 mb-1">Period To</label>
+          <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1F4E79]"/></div>
+        <label className="flex items-center gap-2 text-sm text-gray-700 pb-0.5 cursor-pointer">
+          <input type="checkbox" checked={includeZero} onChange={e=>setIncludeZero(e.target.checked)} className="rounded"/> Include Zero Balances</label>
+        <button onClick={() => setRunParams({ dateFrom, dateTo })} disabled={isFetching}
+          className="flex items-center gap-1.5 px-4 py-1.5 bg-[#1F4E79] text-white rounded text-sm hover:bg-[#163a5c] disabled:opacity-60">
+          {isFetching ? <><Loader2 size={14} className="animate-spin"/> Running…</> : <><RefreshCw size={14}/> Run Report</>}
         </button>
-        <button onClick={() => refetch()} className="toolbar-btn"><RefreshCw size={13} /></button>
-        {lines.length > 0 && <button onClick={handleExport} className="toolbar-btn"><Download size={13} /><span>Export</span></button>}
       </div>
 
-      {/* Report content */}
-      <div className="flex-1 overflow-auto p-4">
-        {!runReport && !data && (
-          <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
-            Set date range and click <strong className="mx-1">Run Report</strong>
-          </div>
-        )}
-        {isLoading && (
-          <div className="flex items-center justify-center h-48 text-gray-400 text-sm">Loading…</div>
-        )}
-        {data && (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            {/* Header */}
-            <div className="px-6 py-3 border-b border-gray-200 bg-gray-50">
-              <h3 className="text-sm font-bold text-gray-800 text-center">Trial Balance</h3>
-              <p className="text-xs text-gray-500 text-center">{format(new Date(dateFrom), 'dd MMM yyyy')} – {format(new Date(dateTo), 'dd MMM yyyy')}</p>
-            </div>
+      <div className="flex items-center gap-5 text-xs text-gray-500 pl-1">
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-blue-200"/> Opening (before period)</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-amber-200"/> Period Movement</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-green-300"/> Closing Balance</span>
+      </div>
 
-            <table className="w-full text-xs">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-600 w-24">Code</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-600">Account Name</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-600 w-24">Type</th>
-                  <th className="px-4 py-2 text-right font-semibold text-gray-600 w-36">Total Debit</th>
-                  <th className="px-4 py-2 text-right font-semibold text-gray-600 w-36">Total Credit</th>
-                  <th className="px-4 py-2 text-right font-semibold text-gray-600 w-36">Net Debit</th>
-                  <th className="px-4 py-2 text-right font-semibold text-gray-600 w-36">Net Credit</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {TYPE_ORDER.map((type) => {
-                  const typeLines = grouped[type];
-                  if (!typeLines?.length) return null;
-                  const sumDebit  = typeLines.reduce((s, l) => s + l.netDebit, 0);
-                  const sumCredit = typeLines.reduce((s, l) => s + l.netCredit, 0);
-                  return (
-                    <React.Fragment key={type}>
-                      {/* Section header */}
-                      <tr className="bg-gray-50">
-                        <td colSpan={7} className={clsx('px-4 py-1.5 text-[11px] font-bold uppercase tracking-wide', TYPE_COLORS[type])}>
-                          {type}
-                        </td>
-                      </tr>
-                      {typeLines.map((line) => (
-                        <tr key={line.accountId} className="hover:bg-blue-50 transition-colors">
-                          <td className="px-4 py-1.5 font-mono text-gray-600">{line.accountCode}</td>
-                          <td className="px-4 py-1.5 text-gray-700">{line.accountName}</td>
-                          <td className="px-4 py-1.5 text-gray-400 text-[10px]">{line.accountType}</td>
-                          <td className="px-4 py-1.5 text-right tabular-nums">{fmt(line.totalDebit)}</td>
-                          <td className="px-4 py-1.5 text-right tabular-nums">{fmt(line.totalCredit)}</td>
-                          <td className="px-4 py-1.5 text-right tabular-nums font-medium text-blue-700">{line.netDebit > 0 ? fmt(line.netDebit) : ''}</td>
-                          <td className="px-4 py-1.5 text-right tabular-nums font-medium text-green-700">{line.netCredit > 0 ? fmt(line.netCredit) : ''}</td>
-                        </tr>
-                      ))}
-                      {/* Section subtotal */}
-                      <tr className="bg-gray-50 border-t border-gray-200">
-                        <td colSpan={5} className="px-4 py-1.5 text-xs font-semibold text-gray-600 text-right">
-                          {type} Total
-                        </td>
-                        <td className="px-4 py-1.5 text-right font-bold text-blue-700 tabular-nums">{sumDebit > 0 ? fmt(sumDebit) : ''}</td>
-                        <td className="px-4 py-1.5 text-right font-bold text-green-700 tabular-nums">{sumCredit > 0 ? fmt(sumCredit) : ''}</td>
-                      </tr>
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-              {/* Grand totals */}
-              <tfoot>
-                <tr className="bg-[#1F4E79] text-white">
-                  <td colSpan={5} className="px-4 py-2 text-sm font-bold text-right">Grand Total</td>
-                  <td className="px-4 py-2 text-right font-bold tabular-nums text-sm">{fmt(data.grandDebit)}</td>
-                  <td className="px-4 py-2 text-right font-bold tabular-nums text-sm">{fmt(data.grandCredit)}</td>
-                </tr>
-                <tr className={clsx(
-                  'text-xs',
-                  Math.abs(data.grandDebit - data.grandCredit) < 0.01 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                )}>
-                  <td colSpan={7} className="px-4 py-1.5 text-center font-semibold">
-                    {Math.abs(data.grandDebit - data.grandCredit) < 0.01
-                      ? '✓ Trial Balance is balanced'
-                      : `✗ Out of balance by ${fmt(Math.abs(data.grandDebit - data.grandCredit))}`}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+      <div className="flex-1 min-h-0 ag-theme-alpine rounded-lg overflow-hidden border border-gray-200">
+        {!runParams ? (
+          <div className="flex items-center justify-center h-full text-gray-400 text-sm">Select a period and click "Run Report"</div>
+        ) : (
+          <AgGridReact<TbRow> ref={gridRef} rowData={rows} columnDefs={colDefs}
+            getRowClass={getRowClass} getRowHeight={getRowHeight}
+            suppressCellFocus suppressRowClickSelection animateRows={false} rowBuffer={20}
+            defaultColDef={{ sortable:false, resizable:true, suppressMenu:true }}/>
         )}
       </div>
+
+      {data?.totals && (
+        <div className="bg-[#1F4E79] text-white rounded-lg px-4 py-2.5 flex items-center gap-2 text-xs font-semibold">
+          <span className="w-[230px] shrink-0">GRAND TOTAL</span>
+          <span className="flex-1 text-right text-blue-200">{fmtA(data.totals.openDr)}</span>
+          <span className="flex-1 text-right text-blue-200">{fmtA(data.totals.openCr)}</span>
+          <span className="flex-1 text-right text-amber-200">{fmtA(data.totals.movDr)}</span>
+          <span className="flex-1 text-right text-amber-200">{fmtA(data.totals.movCr)}</span>
+          <span className={clsx('flex-1 text-right', isBalanced?'text-green-200':'text-red-300')}>{fmtA(data.totals.closDr)}</span>
+          <span className={clsx('flex-1 text-right', isBalanced?'text-green-200':'text-red-300')}>{fmtA(data.totals.closCr)}</span>
+        </div>
+      )}
     </div>
   );
 }

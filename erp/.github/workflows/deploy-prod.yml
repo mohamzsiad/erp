@@ -1,0 +1,348 @@
+name: Deploy — Production Release
+
+on:
+  push:
+    tags:
+      - 'v*'    # Triggers on version tags: v1.0.0, v2.1.3, etc.
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20'
+  AZURE_RG: rg-clouderp-prod
+  ENV_SUFFIX: prod001
+
+jobs:
+  # ── CI checks (always run before prod deploy) ─────────────────────────────────
+  ci:
+    name: CI Checks
+    uses: ./.github/workflows/ci.yml
+
+  # ── Extract release metadata ──────────────────────────────────────────────────
+  release-info:
+    name: Release Info
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      sha: ${{ steps.tag.outputs.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version and SHA
+        id: tag
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          SHA=$(git rev-parse --short HEAD)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          echo "Deploying version $VERSION (sha: $SHA) to production"
+
+  # ── Build and push production Docker image ────────────────────────────────────
+  build-prod-image:
+    name: Build Production Image
+    runs-on: ubuntu-latest
+    needs: [ci, release-info]
+    environment: production    # Requires manual approval
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID_PROD }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_PROD }}
+
+      - name: Log in to ACR
+        run: az acr login --name ${{ secrets.ACR_NAME_PROD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push production image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: packages/backend/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.ACR_LOGIN_SERVER_PROD }}/clouderp-backend:${{ needs.release-info.outputs.version }}
+            ${{ secrets.ACR_LOGIN_SERVER_PROD }}/clouderp-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_SHA=${{ needs.release-info.outputs.sha }}
+            BUILD_VERSION=${{ needs.release-info.outputs.version }}
+
+  # ── Production DB migration ───────────────────────────────────────────────────
+  migrate-prod:
+    name: Production DB Migration
+    runs-on: ubuntu-latest
+    needs: build-prod-image
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install backend deps
+        working-directory: packages/backend
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: packages/backend
+        run: npx prisma generate
+
+      - name: Run migrations (production)
+        working-directory: packages/backend
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+
+  # ── Deploy to App Service staging slot (prod infra) ──────────────────────────
+  deploy-prod-staging:
+    name: Deploy to Prod Staging Slot
+    runs-on: ubuntu-latest
+    needs: [migrate-prod, release-info]
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID_PROD }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_PROD }}
+
+      - name: Deploy to staging slot (prod infra)
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ secrets.APP_SERVICE_NAME_PROD }}
+          slot-name: staging
+          images: ${{ secrets.ACR_LOGIN_SERVER_PROD }}/clouderp-backend:${{ needs.release-info.outputs.version }}
+
+      - name: Wait for staging slot health
+        run: |
+          STAGING_URL="https://${{ secrets.APP_SERVICE_NAME_PROD }}-staging.azurewebsites.net"
+          for i in {1..30}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$STAGING_URL/api/v1/health" || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "Staging slot healthy ✓"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Staging slot health check timed out"
+          exit 1
+
+  # ── Production smoke tests ────────────────────────────────────────────────────
+  smoke-tests-prod:
+    name: Production Smoke Tests
+    runs-on: ubuntu-latest
+    needs: deploy-prod-staging
+
+    steps:
+      - name: Smoke test staging slot (prod infra)
+        run: |
+          URL="https://${{ secrets.APP_SERVICE_NAME_PROD }}-staging.azurewebsites.net"
+          # Health check
+          RESP=$(curl -sf "$URL/api/v1/health")
+          STATUS=$(echo "$RESP" | jq -r '.status')
+          echo "Health: $STATUS — $RESP"
+          # Auth endpoint
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "$URL/api/v1/auth/login" \
+            -H "Content-Type: application/json" \
+            -d '{"email":"probe@test.com","password":"probe"}')
+          echo "Auth endpoint: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "401" ] && [ "$HTTP_CODE" != "400" ]; then
+            echo "Unexpected auth response: $HTTP_CODE"
+            exit 1
+          fi
+          echo "Smoke tests passed ✓"
+
+  # ── Swap to production (requires manual approval via Environment) ─────────────
+  swap-prod:
+    name: Swap to Production
+    runs-on: ubuntu-latest
+    needs: smoke-tests-prod
+    environment: production-swap   # Configure with required reviewers in GitHub Settings
+
+    steps:
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID_PROD }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_PROD }}
+
+      - name: Swap staging → production
+        run: |
+          az webapp deployment slot swap \
+            --resource-group ${{ env.AZURE_RG }} \
+            --name ${{ secrets.APP_SERVICE_NAME_PROD }} \
+            --slot staging \
+            --target-slot production
+
+      - name: Verify production health
+        run: |
+          URL="https://${{ secrets.APP_SERVICE_NAME_PROD }}.azurewebsites.net"
+          for i in {1..15}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL/api/v1/health" || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "Production healthy after swap ✓"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Production unhealthy — rolling back swap"
+          az webapp deployment slot swap \
+            --resource-group ${{ env.AZURE_RG }} \
+            --name ${{ secrets.APP_SERVICE_NAME_PROD }} \
+            --slot staging \
+            --target-slot production
+          exit 1
+
+  # ── Deploy frontend ───────────────────────────────────────────────────────────
+  deploy-frontend-prod:
+    name: Deploy Frontend (Production)
+    runs-on: ubuntu-latest
+    needs: [ci, release-info]
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci --workspaces --if-present
+
+      - name: Build frontend (production)
+        working-directory: packages/frontend
+        run: npm run build
+        env:
+          VITE_API_URL: /api/v1
+          NODE_ENV: production
+
+      - name: Deploy to Azure Static Web Apps (Production)
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN_PROD }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: 'upload'
+          app_location: 'packages/frontend'
+          output_location: 'dist'
+          skip_app_build: true
+
+  # ── Create GitHub Release ─────────────────────────────────────────────────────
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [swap-prod, deploy-frontend-prod, release-info]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo '')
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES=$(git log --oneline "$PREV_TAG..HEAD" --no-merges | head -50)
+          else
+            CHANGES=$(git log --oneline -20 --no-merges)
+          fi
+          echo "changes<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "CloudERP ${{ needs.release-info.outputs.version }}"
+          body: |
+            ## CloudERP ${{ needs.release-info.outputs.version }}
+
+            **Deployed to production:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            ### Changes
+            ${{ steps.changelog.outputs.changes }}
+
+            ### Docker Image
+            `${{ secrets.ACR_LOGIN_SERVER_PROD }}/clouderp-backend:${{ needs.release-info.outputs.version }}`
+          generate_release_notes: true
+
+  # ── Notify team ───────────────────────────────────────────────────────────────
+  notify:
+    name: Notify Team
+    runs-on: ubuntu-latest
+    needs: [swap-prod, deploy-frontend-prod]
+    if: always()
+
+    steps:
+      - name: Notify on success
+        if: needs.swap-prod.result == 'success' && needs.deploy-frontend-prod.result == 'success'
+        run: |
+          curl -s -X POST "${{ secrets.TEAMS_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "type": "message",
+              "attachments": [{
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                  "type": "AdaptiveCard",
+                  "body": [{
+                    "type": "TextBlock",
+                    "text": "✅ CloudERP ${{ github.ref_name }} deployed to production",
+                    "size": "Large",
+                    "weight": "Bolder",
+                    "color": "Good"
+                  }, {
+                    "type": "TextBlock",
+                    "text": "Deployed by: ${{ github.actor }} | Run: ${{ github.run_id }}"
+                  }]
+                }
+              }]
+            }'
+
+      - name: Notify on failure
+        if: needs.swap-prod.result != 'success' || needs.deploy-frontend-prod.result != 'success'
+        run: |
+          curl -s -X POST "${{ secrets.TEAMS_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "type": "message",
+              "attachments": [{
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                  "type": "AdaptiveCard",
+                  "body": [{
+                    "type": "TextBlock",
+                    "text": "❌ CloudERP ${{ github.ref_name }} FAILED to deploy",
+                    "size": "Large",
+                    "weight": "Bolder",
+                    "color": "Attention"
+                  }, {
+                    "type": "TextBlock",
+                    "text": "Check: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }]
+                }
+              }]
+            }'

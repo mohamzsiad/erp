@@ -3,13 +3,19 @@ import { PrismaClient } from '@prisma/client';
 export class BinService {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async list(warehouseId: string, companyId: string) {
-    // Verify warehouse belongs to company
-    const wh = await this.prisma.warehouse.findFirst({ where: { id: warehouseId, companyId } });
-    if (!wh) throw Object.assign(new Error('Warehouse not found'), { statusCode: 404 });
+  async list(opts: { companyId: string; warehouseId?: string; search?: string; page?: number; limit?: number }) {
+    const { companyId, warehouseId, search } = opts;
+
+    if (warehouseId) {
+      const wh = await this.prisma.warehouse.findFirst({ where: { id: warehouseId, companyId } });
+      if (!wh) throw Object.assign(new Error('Warehouse not found'), { statusCode: 404 });
+    }
 
     return this.prisma.bin.findMany({
-      where: { warehouseId },
+      where: {
+        ...(warehouseId ? { warehouseId } : { warehouse: { companyId } }),
+        ...(search ? { OR: [{ code: { contains: search, mode: 'insensitive' } }, { name: { contains: search, mode: 'insensitive' } }] } : {}),
+      },
       orderBy: { code: 'asc' },
     });
   }
@@ -23,21 +29,22 @@ export class BinService {
     return bin;
   }
 
-  async create(warehouseId: string, companyId: string, input: { code: string; name: string; capacity?: number }) {
+  async create(input: { warehouseId: string; code: string; name: string; capacity?: number }, companyId: string) {
+    const { warehouseId, code, name, capacity } = input;
     const wh = await this.prisma.warehouse.findFirst({ where: { id: warehouseId, companyId } });
     if (!wh) throw Object.assign(new Error('Warehouse not found'), { statusCode: 404 });
 
-    const existing = await this.prisma.bin.findFirst({ where: { warehouseId, code: input.code } });
+    const existing = await this.prisma.bin.findFirst({ where: { warehouseId, code } });
     if (existing) {
-      throw Object.assign(new Error(`Bin code '${input.code}' already exists in this warehouse`), { statusCode: 409 });
+      throw Object.assign(new Error(`Bin code '${code}' already exists in this warehouse`), { statusCode: 409 });
     }
 
     return this.prisma.bin.create({
-      data: { warehouseId, code: input.code, name: input.name, capacity: input.capacity ?? null },
+      data: { warehouseId, code, name, capacity: capacity ?? null },
     });
   }
 
-  async update(id: string, companyId: string, input: { name?: string; capacity?: number | null }) {
+  async update(id: string, input: { name?: string; capacity?: number | null }, companyId: string) {
     await this.getById(id, companyId);
     return this.prisma.bin.update({ where: { id }, data: input });
   }

@@ -3,12 +3,40 @@ import { PrismaClient } from '@prisma/client';
 export class WarehouseService {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async list(companyId: string, includeInactive = false) {
-    return this.prisma.warehouse.findMany({
-      where: { companyId, ...(includeInactive ? {} : { isActive: true }) },
-      include: { location: { select: { id: true, code: true, name: true } } },
-      orderBy: { code: 'asc' },
-    });
+  async list(opts: {
+    companyId: string;
+    search?: string;
+    isActive?: boolean;
+    page?: number;
+    limit?: number;
+  }) {
+    const { companyId, search, isActive, page = 1, limit = 50 } = opts;
+
+    const where: Record<string, unknown> = { companyId };
+    if (isActive !== undefined) {
+      where.isActive = isActive;
+    } else {
+      where.isActive = true;
+    }
+    if (search) {
+      where.OR = [
+        { code: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.warehouse.findMany({
+        where,
+        include: { location: { select: { id: true, code: true, name: true } } },
+        orderBy: { code: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.warehouse.count({ where }),
+    ]);
+
+    return { data, total, page, limit };
   }
 
   async getById(id: string, companyId: string) {

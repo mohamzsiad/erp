@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 export interface ReportFilters {
   companyId: string;
@@ -374,7 +374,7 @@ export class ReportService {
       WHERE po."companyId" = ${filters.companyId}
         AND po."deliveryDate" IS NOT NULL
         AND po.status IN ('RECEIVED', 'INVOICED', 'CLOSED')
-        ${filters.supplierId ? this.prisma.$queryRaw`AND po."supplierId" = ${filters.supplierId}` : this.prisma.$queryRaw``}
+        ${filters.supplierId ? Prisma.sql`AND po."supplierId" = ${filters.supplierId}` : Prisma.empty}
       GROUP BY s.code, s.name, i.code, i.description, u.code
       ORDER BY "supplierName", "itemCode"
     `;
@@ -424,7 +424,7 @@ export class ReportService {
         JOIN suppliers s ON s.id = po."supplierId"
         WHERE po."companyId" = ${filters.companyId}
           AND po.status NOT IN ('CANCELLED')
-          ${filters.itemId ? this.prisma.$queryRaw`AND pl."itemId" = ${filters.itemId}` : this.prisma.$queryRaw``}
+          ${filters.itemId ? Prisma.sql`AND pl."itemId" = ${filters.itemId}` : Prisma.empty}
       )
       SELECT * FROM ranked WHERE rn <= 5
       ORDER BY "itemCode", "supplierCode", rn
@@ -492,7 +492,6 @@ export class ReportService {
         location: { select: { code: true } },
         lines: {
           select: { requestedQty: true },
-          where: { isShortClosed: false },
         },
       },
       orderBy: { docDate: 'asc' },

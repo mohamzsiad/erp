@@ -71,7 +71,7 @@ export default async function warehouseRoutes(fastify: FastifyInstance) {
     },
     preHandler: [PERM.CREATE],
   }, async (req: FastifyRequest<{ Body: any }>, reply: FastifyReply) => {
-    return reply.code(201).send(await svc(req).create(req.body, req.user.companyId, req.user.userId));
+    return reply.code(201).send(await svc(req).create(req.user.companyId, req.body));
   });
 
   // PATCH /warehouses/:id
@@ -82,7 +82,7 @@ export default async function warehouseRoutes(fastify: FastifyInstance) {
     },
     preHandler: [PERM.EDIT],
   }, async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
-    return reply.send(await svc(req).update(req.params.id, req.body, req.user.companyId));
+    return reply.send(await svc(req).update(req.params.id, req.user.companyId, req.body));
   });
 
   // DELETE /warehouses/:id

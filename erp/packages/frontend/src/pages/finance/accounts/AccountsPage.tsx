@@ -102,7 +102,7 @@ interface DetailFormProps {
 const DetailForm: React.FC<DetailFormProps> = ({
   account, parentNode, onCreated, onUpdated, onDeleted, onNewChild,
 }) => {
-  const { addToast } = useToast();
+  const toast = useToast();
   const [form, setForm] = useState({ ...EMPTY_FORM, ...account });
   const createMut  = useCreateGlAccount();
   const updateMut  = useUpdateGlAccount(account?.id ?? '');
@@ -112,26 +112,26 @@ const DetailForm: React.FC<DetailFormProps> = ({
     if (account) {
       setForm({ ...account, parentId: account.parentId ?? null });
     } else {
-      setForm({ ...EMPTY_FORM, parentId: parentNode?.id ?? null, accountType: parentNode?.accountType ?? 'ASSET' });
+      setForm({ ...EMPTY_FORM, parentId: parentNode?.id ?? null, accountType: parentNode?.accountType ?? 'ASSET' } as any);
     }
   }, [account, parentNode]);
 
   const isSaving = createMut.isPending || updateMut.isPending;
 
   const handleSave = async () => {
-    if (!form.code || !form.name) { addToast({ type: 'error', message: 'Code and Name are required' }); return; }
+    if (!form.code || !form.name) { toast.error('Code and Name are required'); return; }
     try {
       if (account) {
         const updated = await updateMut.mutateAsync(form);
         onUpdated(updated);
-        addToast({ type: 'success', message: 'Account updated' });
+        toast.success('Account updated');
       } else {
         const created = await createMut.mutateAsync(form);
         onCreated(created);
-        addToast({ type: 'success', message: 'Account created' });
+        toast.success('Account created');
       }
     } catch (e: any) {
-      addToast({ type: 'error', message: e?.response?.data?.message ?? 'Save failed' });
+      toast.error(e?.response?.data?.message ?? 'Save failed');
     }
   };
 
@@ -140,9 +140,9 @@ const DetailForm: React.FC<DetailFormProps> = ({
     try {
       await deleteMut.mutateAsync(account.id);
       onDeleted();
-      addToast({ type: 'success', message: 'Account deleted' });
+      toast.success('Account deleted');
     } catch (e: any) {
-      addToast({ type: 'error', message: e?.response?.data?.message ?? 'Delete failed' });
+      toast.error(e?.response?.data?.message ?? 'Delete failed');
     }
   };
 

@@ -19,13 +19,11 @@ const InventoryRouter = lazy(() => import('./pages/inventory/InventoryRouter'));
 // ── Finance ───────────────────────────────────────────────────────────────────
 const FinanceRouter = lazy(() => import('./pages/finance/FinanceRouter'));
 
-// ── Admin (Prompt 9) ──────────────────────────────────────────────────────────
-const AdminPlaceholder = () => (
-  <div className="p-6">
-    <h2 className="text-lg font-semibold text-gray-700">Administration</h2>
-    <p className="text-gray-500 text-sm mt-1">This module will be built in Prompt 9.</p>
-  </div>
-);
+// ── Admin ─────────────────────────────────────────────────────────────────────
+const AdminRouter = lazy(() => import('./pages/admin/AdminRouter'));
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+const NotificationsPage = lazy(() => import('./pages/notifications/NotificationsPage'));
 
 // ── Spinner fallback ──────────────────────────────────────────────────────────
 const PageSpinner = () => (
@@ -83,19 +81,11 @@ export default function App() {
             }
           />
 
+          {/* Notifications */}
+          <Route path="/notifications" element={<NotificationsPage />} />
+
           {/* Admin */}
-          <Route
-            path="/admin/*"
-            element={
-              <ProtectedRoute
-                module="CORE"
-                resource="CONFIG"
-                action="CONFIGURE"
-              >
-                <AdminPlaceholder />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/admin/*" element={<AdminRouter />} />
 
           {/* 404 inside shell */}
           <Route path="*" element={<NotFoundPage />} />
