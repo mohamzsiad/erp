@@ -40,6 +40,8 @@ const envSchema = z.object({
   AZURE_STORAGE_CONNECTION_STRING: z.string().optional(),
   AZURE_BLOB_CONTAINER:            z.string().default('erp-attachments'),
 
+  ANTHROPIC_API_KEY: z.string().min(1, 'ANTHROPIC_API_KEY is required'),
+
   // ── Azure Application Insights (optional — telemetry disabled if not set) ──
   APPLICATIONINSIGHTS_CONNECTION_STRING: z.string().optional(),
 

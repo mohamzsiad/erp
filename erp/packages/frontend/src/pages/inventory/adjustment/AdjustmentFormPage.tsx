@@ -159,7 +159,7 @@ export default function AdjustmentFormPage() {
                   </td>
                   <td className="px-2 py-1 text-right bg-gray-50 text-gray-500">{row.systemQty.toFixed(3)}</td>
                   <td className="px-1 py-1">
-                    <input type="number" value={row.physicalQty} step="0.001" min={0}
+                    <input type="number" value={row.physicalQty || ''} step="0.001" min={0}
                       onChange={(e) => updateLine(row._rowId, 'physicalQty', parseFloat(e.target.value) || 0)}
                       className="erp-input w-full text-right" disabled={!isEditable} />
                   </td>

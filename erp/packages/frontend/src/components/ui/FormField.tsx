@@ -36,12 +36,16 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   error?: boolean;
 }
 
-export const Input: React.FC<InputProps> = ({ error, className, ...props }) => (
-  <input
-    className={clsx('erp-input', error && 'border-red-400 focus:ring-red-300', className)}
-    {...props}
-  />
+export const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ error, className, ...props }, ref) => (
+    <input
+      ref={ref}
+      className={clsx('erp-input', error && 'border-red-400 focus:ring-red-300', className)}
+      {...props}
+    />
+  )
 );
+Input.displayName = 'Input';
 
 interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   error?: boolean;
@@ -67,10 +71,14 @@ interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement
   error?: boolean;
 }
 
-export const Textarea: React.FC<TextareaProps> = ({ error, className, ...props }) => (
-  <textarea
-    rows={3}
-    className={clsx('erp-input resize-none', error && 'border-red-400 focus:ring-red-300', className)}
-    {...props}
-  />
+export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
+  ({ error, className, ...props }, ref) => (
+    <textarea
+      ref={ref}
+      rows={3}
+      className={clsx('erp-input resize-none', error && 'border-red-400 focus:ring-red-300', className)}
+      {...props}
+    />
+  )
 );
+Textarea.displayName = 'Textarea';

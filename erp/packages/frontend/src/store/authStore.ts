@@ -5,10 +5,11 @@ import type { AuthUser, PermissionSet } from '@clouderp/shared';
 interface AuthState {
   user: AuthUser | null;
   accessToken: string | null;
+  refreshToken: string | null;
   permissions: PermissionSet[];
   isAuthenticated: boolean;
 
-  setAuth: (user: AuthUser, accessToken: string, permissions: PermissionSet[]) => void;
+  setAuth: (user: AuthUser, accessToken: string, refreshToken: string, permissions: PermissionSet[]) => void;
   setAccessToken: (token: string) => void;
   clearAuth: () => void;
   hasPermission: (module: string, resource: string, action: string) => boolean;
@@ -20,11 +21,12 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       accessToken: null,
+      refreshToken: null,
       permissions: [],
       isAuthenticated: false,
 
-      setAuth: (user, accessToken, permissions) =>
-        set({ user, accessToken, permissions, isAuthenticated: true }),
+      setAuth: (user, accessToken, refreshToken, permissions) =>
+        set({ user, accessToken, refreshToken, permissions, isAuthenticated: true }),
 
       setAccessToken: (token) => set({ accessToken: token }),
 
@@ -32,6 +34,7 @@ export const useAuthStore = create<AuthState>()(
         set({
           user: null,
           accessToken: null,
+          refreshToken: null,
           permissions: [],
           isAuthenticated: false,
         }),
@@ -56,9 +59,9 @@ export const useAuthStore = create<AuthState>()(
       name: 'clouderp-auth',
       partialize: (state) => ({
         user: state.user,
+        refreshToken: state.refreshToken,
         permissions: state.permissions,
         isAuthenticated: state.isAuthenticated,
-        // accessToken is NOT persisted — refreshed on page load via silent refresh
       }),
     }
   )

@@ -4,7 +4,6 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
-import { Package, Paperclip } from 'lucide-react';
 
 import { DocumentToolbar } from '../../../components/ui/DocumentToolbar';
 import { KeyInfoItemDetailsTabs } from '../../../components/ui/KeyInfoItemDetailsTabs';
@@ -12,11 +11,15 @@ import { FormField, Input, Select, Textarea } from '../../../components/ui/FormF
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { useToast } from '../../../components/ui/Toast';
 import DataGrid, { type ColDef } from '../../../components/ui/DataGrid';
+import SupplierXRefTab from '../../../components/inventory/tabs/SupplierXRefTab';
+import GradeOptionsTab from '../../../components/inventory/tabs/GradeOptionsTab';
+import AttachmentsTab from '../../../components/inventory/tabs/AttachmentsTab';
 
 import {
   useItem, useItemStock, useItemTransactions,
   useItemCategories, useUoms,
   useCreateItem, useUpdateItem,
+  useItemSupplierXRefs, useItemAttachments,
 } from '../../../api/inventory';
 
 // ── Schema ────────────────────────────────────────────────────────────────────
@@ -91,14 +94,18 @@ export default function ItemFormPage() {
   const { data: txnData }    = useItemTransactions(isNew ? '' : id!, { page: 1, limit: 200 });
   const { data: catsData }   = useItemCategories();
   const { data: uomsData }   = useUoms();
+  const { data: suppliersData } = useItemSupplierXRefs(isNew ? undefined : id);
+  const { data: attachmentsData } = useItemAttachments(isNew ? undefined : id);
 
   const createMutation = useCreateItem();
   const updateMutation = useUpdateItem(id ?? '');
 
-  const categories: any[] = (catsData as any)?.data ?? [];
-  const uoms: any[]       = (uomsData as any)?.data ?? [];
-  const balances: any[]   = (stockData as any)?.balances ?? [];
-  const txns: any[]       = (txnData as any)?.data ?? [];
+  const categories: any[]  = Array.isArray(catsData) ? catsData : (catsData as any)?.data ?? [];
+  const uoms: any[]        = Array.isArray(uomsData) ? uomsData : (uomsData as any)?.data ?? [];
+  const balances: any[]    = (stockData as any)?.balances ?? [];
+  const txns: any[]        = (txnData as any)?.data ?? [];
+  const supplierXRefs: any[] = Array.isArray(suppliersData) ? suppliersData : (suppliersData as any)?.data ?? [];
+  const attachments: any[] = Array.isArray(attachmentsData) ? attachmentsData : (attachmentsData as any)?.data ?? [];
 
   const {
     register, control, handleSubmit, reset, watch,
@@ -263,17 +270,33 @@ export default function ItemFormPage() {
     </div>
   );
 
-  const placeholderTab = (label: string) => (
-    <div className="flex items-center justify-center h-32 text-gray-400 text-sm">{label} — coming in a later release</div>
+  const newItemNotice = (label: string) => (
+    <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Save the item first to manage {label}.</div>
   );
 
   const tabs = [
     { id: 'key-info',     label: 'Key Info',          content: keyInfoPanel },
-    { id: 'stock-bal',    label: 'Stock Balance',      badge: balances.length, content: stockBalanceContent },
-    { id: 'stock-mov',    label: 'Stock Movement',     badge: txns.length,     content: stockMovementContent },
-    { id: 'supplier-ref', label: 'Supplier X-Ref',     content: placeholderTab('Supplier Cross-Reference') },
-    { id: 'grade',        label: 'Grade Options',      content: placeholderTab('Grade Options') },
-    { id: 'attachments',  label: 'Attachments',        content: placeholderTab('Attachments') },
+    { id: 'stock-bal',    label: 'Stock Balance',      badge: balances.length,     content: stockBalanceContent },
+    { id: 'stock-mov',    label: 'Stock Movement',     badge: txns.length,         content: stockMovementContent },
+    {
+      id: 'supplier-ref',
+      label: 'Supplier X-Ref',
+      badge: supplierXRefs.length || undefined,
+      content: isNew ? newItemNotice('supplier references') : <SupplierXRefTab itemId={id!} />,
+    },
+    {
+      id: 'grade',
+      label: 'Grade Options',
+      content: isNew
+        ? newItemNotice('grade options')
+        : <GradeOptionsTab itemId={id!} grade1Options={item?.grade1Options ?? []} grade2Options={item?.grade2Options ?? []} />,
+    },
+    {
+      id: 'attachments',
+      label: 'Attachments',
+      badge: attachments.length || undefined,
+      content: isNew ? newItemNotice('attachments') : <AttachmentsTab itemId={id!} />,
+    },
   ];
 
   if (isLoading) {

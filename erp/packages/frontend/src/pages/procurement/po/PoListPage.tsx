@@ -13,8 +13,14 @@ const COLUMNS: ColDef<PurchaseOrder>[] = [
     field: 'docDate', headerName: 'Date', width: 110,
     valueFormatter: (p) => p.value ? format(new Date(p.value as string), 'dd/MM/yyyy') : '',
   },
-  { field: 'supplierId', headerName: 'Supplier', flex: 2, minWidth: 180 },
-  { field: 'currencyId', headerName: 'Currency', width: 90 },
+  {
+    field: 'supplierId', headerName: 'Supplier', flex: 2, minWidth: 180,
+    valueGetter: (p) => (p.data as PurchaseOrder).supplier?.name ?? p.data?.supplierId ?? '',
+  },
+  {
+    field: 'currencyId', headerName: 'Currency', width: 90,
+    valueGetter: (p) => (p.data as PurchaseOrder).currency?.code ?? p.data?.currencyId ?? '',
+  },
   {
     field: 'exchangeRate', headerName: 'Ex. Rate', width: 90, type: 'numericColumn',
     valueFormatter: (p) => p.value != null ? Number(p.value).toFixed(4) : '',
@@ -64,7 +70,7 @@ export default function PoListPage() {
     const rows = data?.data ?? [];
     const csv = [
       ['PO Number', 'Date', 'Supplier', 'Currency', 'Total Amount', 'Status'],
-      ...rows.map((r) => [r.docNo, r.docDate, r.supplierId, r.currencyId, r.totalAmount, r.status]),
+      ...rows.map((r) => [r.docNo, r.docDate, r.supplier?.name ?? r.supplierId, r.currency?.code ?? r.currencyId, r.totalAmount, r.status]),
     ]
       .map((row) => row.join(','))
       .join('\n');

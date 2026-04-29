@@ -23,6 +23,7 @@ import {
   searchLocations,
   searchChargeCodes,
   searchItems,
+  searchUoms,
 } from '../../../api/procurement';
 import { format } from 'date-fns';
 import type { MrlLine } from '@clouderp/shared';
@@ -107,6 +108,7 @@ export default function MrlFormPage() {
     defaultValues: {
       docDate: format(new Date(), 'yyyy-MM-dd'),
       deliveryDate: '',
+      remarks: '',
     },
   });
 
@@ -448,12 +450,16 @@ export default function MrlFormPage() {
                   />
                 </td>
                 <td className="px-1 py-1">
-                  <input
-                    type="text"
-                    value={row.uomId ?? ''}
-                    onChange={(e) => updateLine(row._rowId, 'uomId', e.target.value)}
-                    className="erp-input w-full"
+                  <LookupField
+                    value={row.uomId ? { value: row.uomId, label: row.uomLabel ?? row.uomId } : null}
+                    onChange={(opt) => {
+                      updateLine(row._rowId, 'uomId', opt?.value);
+                      updateLine(row._rowId, 'uomLabel', opt?.label);
+                    }}
+                    onSearch={searchUoms}
+                    placeholder="UOM…"
                     disabled={!isDraft}
+                    className="min-w-[70px]"
                   />
                 </td>
                 <td className="px-2 py-1 text-right text-gray-500">
@@ -462,7 +468,7 @@ export default function MrlFormPage() {
                 <td className="px-1 py-1">
                   <input
                     type="number"
-                    value={row.requestedQty ?? 1}
+                    value={row.requestedQty || ''}
                     onChange={(e) => updateLine(row._rowId, 'requestedQty', parseFloat(e.target.value) || 0)}
                     className="erp-input w-full text-right"
                     min={0}
@@ -473,7 +479,7 @@ export default function MrlFormPage() {
                 <td className="px-1 py-1">
                   <input
                     type="number"
-                    value={row.approvedQty ?? 0}
+                    value={row.approvedQty || ''}
                     onChange={(e) => updateLine(row._rowId, 'approvedQty', parseFloat(e.target.value) || 0)}
                     className="erp-input w-full text-right"
                     min={0}

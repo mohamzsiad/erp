@@ -17,7 +17,10 @@ const COLUMNS: ColDef<PurchaseRequisition>[] = [
     field: 'deliveryDate', headerName: 'Delivery Date', width: 120,
     valueFormatter: (p) => p.value ? format(new Date(p.value as string), 'dd/MM/yyyy') : '',
   },
-  { field: 'mrlId', headerName: 'MRL Ref', width: 140 },
+  {
+    field: 'mrl', headerName: 'MRL Ref', width: 140,
+    valueFormatter: (p) => (p.value as { docNo: string } | null)?.docNo ?? '',
+  },
   { field: 'remarks', headerName: 'Remarks', flex: 2, minWidth: 200 },
   {
     field: 'status', headerName: 'Status', width: 130,
@@ -56,7 +59,7 @@ export default function PrlListPage() {
     const rows = data?.data ?? [];
     const csv = [
       ['Doc No', 'Date', 'Delivery Date', 'MRL Ref', 'Status'],
-      ...rows.map((r) => [r.docNo, r.docDate, r.deliveryDate, r.mrlId ?? '', r.status]),
+      ...rows.map((r) => [r.docNo, r.docDate, r.deliveryDate, r.mrl?.docNo ?? '', r.status]),
     ]
       .map((row) => row.join(','))
       .join('\n');

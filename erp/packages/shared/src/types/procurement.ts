@@ -114,6 +114,7 @@ export interface PurchaseRequisition extends AuditInfo {
   approvedById: string | null;
   location?: { id: string; code: string; name: string };
   chargeCode?: { id: string; code: string; name: string };
+  mrl?: { docNo: string } | null;
   lines?: PrlLine[];
 }
 
@@ -184,17 +185,32 @@ export interface PurchaseOrder extends AuditInfo {
   docNo: string;
   docDate: string;
   supplierId: string;
+  supplier?: {
+    code: string;
+    name: string;
+    contacts?: SupplierContact[];
+    bankDetails?: SupplierBankDetail[];
+  };
   currencyId: string;
+  currency?: { code: string };
   exchangeRate: number;
   paymentTerms: string | null;
   incoterms: string | null;
   deliveryDate: string | null;
   shipToLocationId: string | null;
+  shipToLocation?: { id: string; code: string; name: string } | null;
+  warehouseId: string | null;
+  warehouse?: { id: string; code: string; name: string } | null;
+  notes: string | null;
   status: PoStatus;
   createdById: string;
+  createdBy?: { id: string; firstName: string; lastName: string; email: string };
   approvedById: string | null;
+  approvedBy?: { id: string; firstName: string; lastName: string; email: string } | null;
   totalAmount: number;
   lines?: PoLine[];
+  grnHeaders?: { id: string; docNo: string; status: string; docDate: string }[];
+  apInvoices?: { id: string; docNo: string; status: string; invoiceDate: string; totalAmount: number }[];
 }
 
 // ── Workflow ──────────────────────────────────────────────────────────────────

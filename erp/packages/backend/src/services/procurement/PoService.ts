@@ -13,6 +13,8 @@ export interface CreatePoInput {
   docDate: string;
   deliveryDate?: string;
   shipToLocationId?: string;
+  warehouseId?: string;
+  notes?: string;
   lines: Array<{
     itemId: string;
     uomId: string;
@@ -29,6 +31,8 @@ export interface UpdatePoInput {
   incoterms?: string;
   deliveryDate?: string;
   shipToLocationId?: string;
+  warehouseId?: string;
+  notes?: string;
   lines?: Array<{
     id?: string;
     itemId: string;
@@ -107,14 +111,22 @@ export class PoService {
     const po = await this.prisma.purchaseOrder.findFirst({
       where: { id, companyId },
       include: {
-        supplier: { include: { contacts: { where: { isPrimary: true } } } },
+        supplier: {
+          include: {
+            contacts: true,
+            bankDetails: true,
+          },
+        },
         currency: true,
         shipToLocation: true,
+        warehouse: { select: { id: true, code: true, name: true } },
+        createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+        approvedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
         lines: {
           include: {
             item: { select: { id: true, code: true, description: true } },
             uom: { select: { id: true, code: true } },
-            chargeCode: { select: { id: true, code: true } },
+            chargeCode: { select: { id: true, code: true, name: true } },
           },
           orderBy: { lineNo: 'asc' },
         },
@@ -186,6 +198,8 @@ export class PoService {
         incoterms: input.incoterms ?? null,
         deliveryDate: input.deliveryDate ? new Date(input.deliveryDate) : null,
         shipToLocationId: input.shipToLocationId ?? null,
+        warehouseId: input.warehouseId ?? null,
+        notes: input.notes ?? null,
         status: 'DRAFT',
         createdById,
         totalAmount,
@@ -241,6 +255,8 @@ export class PoService {
             incoterms: input.incoterms,
             deliveryDate: input.deliveryDate ? new Date(input.deliveryDate) : undefined,
             shipToLocationId: input.shipToLocationId,
+            warehouseId: input.warehouseId,
+            notes: input.notes,
             totalAmount,
           },
         });
@@ -253,6 +269,8 @@ export class PoService {
           incoterms: input.incoterms,
           deliveryDate: input.deliveryDate ? new Date(input.deliveryDate) : undefined,
           shipToLocationId: input.shipToLocationId,
+          warehouseId: input.warehouseId,
+          notes: input.notes,
         },
       });
     });

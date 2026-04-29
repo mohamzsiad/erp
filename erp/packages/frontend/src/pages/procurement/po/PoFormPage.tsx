@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, CheckCircle, XCircle, Clock, Building2, Phone, Mail, CreditCard, Warehouse, FileText, TrendingUp, X } from 'lucide-react';
 import { DocumentToolbar } from '../../../components/ui/DocumentToolbar';
 import { KeyInfoItemDetailsTabs } from '../../../components/ui/KeyInfoItemDetailsTabs';
 import { FormField, Input, Select } from '../../../components/ui/FormField';
@@ -19,10 +19,13 @@ import {
   useApprovePo,
   useRejectPo,
   useCancelPo,
+  useShortClosePo,
   searchSuppliers,
   searchLocations,
   searchItems,
   searchChargeCodes,
+  searchCurrencies,
+  searchWarehouses,
 } from '../../../api/procurement';
 import { format } from 'date-fns';
 import type { PoLine } from '@clouderp/shared';
@@ -37,6 +40,8 @@ const schema = z.object({
   incoterms: z.string().optional(),
   deliveryDate: z.string().optional(),
   shipToLocationId: z.string().optional(),
+  warehouseId: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -76,9 +81,12 @@ export default function PoFormPage() {
   const approveMutation = useApprovePo(id ?? '');
   const rejectMutation = useRejectPo(id ?? '');
   const cancelMutation = useCancelPo(id ?? '');
+  const shortCloseMutation = useShortClosePo(id ?? '');
 
   const [supplier, setSupplier] = useState<LookupOption | null>(null);
+  const [currency, setCurrency] = useState<LookupOption | null>(null);
   const [shipToLocation, setShipToLocation] = useState<LookupOption | null>(null);
+  const [warehouse, setWarehouse] = useState<LookupOption | null>(null);
   const [lineRows, setLineRows] = useState<PoLineRow[]>([]);
   const [lineSearch, setLineSearch] = useState('');
   const rowCounter = useRef(0);
@@ -88,7 +96,6 @@ export default function PoFormPage() {
     handleSubmit,
     control,
     reset,
-    watch,
     formState: { errors, isDirty },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -113,7 +120,21 @@ export default function PoFormPage() {
         incoterms: doc.incoterms ?? undefined,
         deliveryDate: doc.deliveryDate ?? undefined,
         shipToLocationId: doc.shipToLocationId ?? undefined,
+        warehouseId: doc.warehouseId ?? undefined,
+        notes: doc.notes ?? undefined,
       });
+      if (doc.supplier) {
+        setSupplier({ value: doc.supplierId, label: doc.supplier.name, subLabel: doc.supplier.code });
+      }
+      if (doc.currency) {
+        setCurrency({ value: doc.currencyId, label: doc.currency.code });
+      }
+      if (doc.shipToLocationId && doc.shipToLocation) {
+        setShipToLocation({ value: doc.shipToLocationId, label: doc.shipToLocation.name, subLabel: doc.shipToLocation.code });
+      }
+      if (doc.warehouseId && doc.warehouse) {
+        setWarehouse({ value: doc.warehouseId, label: doc.warehouse.name, subLabel: doc.warehouse.code });
+      }
       if (doc.lines) {
         setLineRows(doc.lines.map((l) => ({ ...l, _rowId: l.id })));
       }
@@ -152,7 +173,9 @@ export default function PoFormPage() {
       const payload = {
         ...values,
         supplierId: supplier?.value ?? values.supplierId,
+        currencyId: currency?.value ?? values.currencyId,
         shipToLocationId: shipToLocation?.value ?? values.shipToLocationId,
+        warehouseId: warehouse?.value ?? values.warehouseId,
         lines: lineRows.map((r, i) => ({
           itemId: r.itemId ?? '',
           uomId: r.uomId ?? '',
@@ -218,6 +241,16 @@ export default function PoFormPage() {
     }
   };
 
+  const handleShortClose = async () => {
+    if (!window.confirm('Short-close this PO? All remaining pending quantities will be closed without delivery.')) return;
+    try {
+      await shortCloseMutation.mutateAsync();
+      toast.success('PO short-closed');
+    } catch (err: unknown) {
+      toast.error('Short close failed', (err as { message?: string })?.message);
+    }
+  };
+
   const saving = createMutation.isPending || updateMutation.isPending;
   const isDraft = !doc || doc.status === 'DRAFT';
   const isSubmitted = doc?.status === 'SUBMITTED';
@@ -269,7 +302,19 @@ export default function PoFormPage() {
         </FormField>
 
         <FormField label="Currency">
-          <Input {...register('currencyId')} placeholder="e.g. USD, AED" />
+          <Controller
+            name="currencyId"
+            control={control}
+            render={({ field }) => (
+              <LookupField
+                value={currency}
+                onChange={(opt) => { setCurrency(opt); field.onChange(opt?.value ?? ''); }}
+                onSearch={searchCurrencies}
+                placeholder="Search currency…"
+                disabled={!isDraft}
+              />
+            )}
+          />
         </FormField>
 
         <FormField label="Exchange Rate" error={errors.exchangeRate?.message}>
@@ -316,7 +361,7 @@ export default function PoFormPage() {
       <div className="mt-3 flex items-center justify-end gap-3">
         <span className="text-xs text-gray-500">Total Amount:</span>
         <span className="text-sm font-bold text-gray-800">
-          {watch('currencyId') ?? ''} {totalAmount.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+          {currency?.label ?? ''} {totalAmount.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
         </span>
       </div>
     </form>
@@ -379,7 +424,7 @@ export default function PoFormPage() {
                   <input type="text" value={row.uomId ?? ''} onChange={(e) => updateLine(row._rowId, 'uomId', e.target.value)} className="erp-input w-full" disabled={!isDraft} />
                 </td>
                 <td className="px-1 py-1">
-                  <input type="number" value={row.orderedQty ?? 1} onChange={(e) => updateLine(row._rowId, 'orderedQty', parseFloat(e.target.value) || 0)} className="erp-input w-full text-right" min={0} step="0.001" disabled={!isDraft} />
+                  <input type="number" value={row.orderedQty || ''} onChange={(e) => updateLine(row._rowId, 'orderedQty', parseFloat(e.target.value) || 0)} className="erp-input w-full text-right" min={0} step="0.001" disabled={!isDraft} />
                 </td>
                 <td className="px-1 py-1">
                   <input type="number" value={row.unitPrice ?? 0} onChange={(e) => updateLine(row._rowId, 'unitPrice', parseFloat(e.target.value) || 0)} className="erp-input w-full text-right" min={0} step="0.001" disabled={!isDraft} />
@@ -453,20 +498,382 @@ export default function PoFormPage() {
     </div>
   );
 
-  const placeholderContent = (label: string) => (
-    <div className="flex items-center justify-center h-32 text-gray-400 text-sm">{label} — available in a later release</div>
+  // ── Authorization tab ──────────────────────────────────────────────────────
+  const authorizationContent = (
+    <div className="p-4 space-y-4">
+      <p className="text-xs text-gray-500">Document authorization and signatory information:</p>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="border border-gray-200 rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <FileText size={14} className="text-blue-500" />
+            <span className="text-xs font-semibold text-gray-700">Created By</span>
+          </div>
+          {doc?.createdBy ? (
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-gray-800">{doc.createdBy.firstName} {doc.createdBy.lastName}</p>
+              <p className="text-xs text-gray-500">{doc.createdBy.email}</p>
+              <p className="text-xs text-gray-400">
+                {doc.createdAt ? format(new Date(doc.createdAt), 'dd MMM yyyy, HH:mm') : '—'}
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400">—</p>
+          )}
+        </div>
+        <div className="border border-gray-200 rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-3">
+            {doc?.approvedById ? (
+              <CheckCircle size={14} className="text-green-500" />
+            ) : doc?.status === 'SUBMITTED' ? (
+              <Clock size={14} className="text-amber-500" />
+            ) : doc?.status === 'CANCELLED' ? (
+              <XCircle size={14} className="text-red-500" />
+            ) : (
+              <Clock size={14} className="text-gray-400" />
+            )}
+            <span className="text-xs font-semibold text-gray-700">Approved By</span>
+          </div>
+          {doc?.approvedBy ? (
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-gray-800">{doc.approvedBy.firstName} {doc.approvedBy.lastName}</p>
+              <p className="text-xs text-gray-500">{doc.approvedBy.email}</p>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400">
+              {doc?.status === 'SUBMITTED' ? 'Pending approval' : doc?.status === 'DRAFT' ? 'Not yet submitted' : '—'}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="border border-gray-200 rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-xs font-semibold text-gray-700">Approval Status</span>
+          {doc && <StatusBadge status={doc.status} />}
+        </div>
+        <div className="flex items-center gap-6 text-xs text-gray-500">
+          <span>Total Amount: <strong className="text-gray-800">{doc?.currency?.code ?? ''} {(doc?.totalAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 3 })}</strong></span>
+          <span>Doc No: <strong className="text-gray-800">{doc?.docNo ?? '—'}</strong></span>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── A/C Details tab ────────────────────────────────────────────────────────
+  const acDetailsContent = (
+    <div className="p-4">
+      <p className="text-xs text-gray-500 mb-3">GL account distribution by line item:</p>
+      {lineRows.length === 0 ? (
+        <p className="text-sm text-gray-400">No lines added. Add items in the Item Details tab.</p>
+      ) : (
+        <table className="w-full text-xs">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-3 py-2 text-left">#</th>
+              <th className="px-3 py-2 text-left">Item</th>
+              <th className="px-3 py-2 text-left">Charge Code</th>
+              <th className="px-3 py-2 text-right">Net Amount</th>
+              <th className="px-3 py-2 text-right">% of Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lineRows.map((row, idx) => {
+              const net = calcNetAmount(row);
+              const pct = totalAmount > 0 ? (net / totalAmount) * 100 : 0;
+              return (
+                <tr key={row._rowId} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="px-3 py-2 text-gray-400">{idx + 1}</td>
+                  <td className="px-3 py-2">{row.itemLabel ?? row.itemId ?? '—'}</td>
+                  <td className="px-3 py-2 font-mono text-blue-600">{row.chargeCodeId ?? '—'}</td>
+                  <td className="px-3 py-2 text-right font-medium">{net.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                  <td className="px-3 py-2 text-right text-gray-500">{pct.toFixed(1)}%</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot className="bg-gray-100 border-t border-gray-200">
+            <tr>
+              <td colSpan={3} className="px-3 py-2 text-right text-xs font-semibold">Total:</td>
+              <td className="px-3 py-2 text-right font-bold">{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+              <td className="px-3 py-2 text-right font-bold">100%</td>
+            </tr>
+          </tfoot>
+        </table>
+      )}
+    </div>
+  );
+
+  // ── Notes tab ──────────────────────────────────────────────────────────────
+  const notesContent = (
+    <div className="p-4 h-full flex flex-col">
+      <p className="text-xs text-gray-500 mb-2">Internal notes for this Purchase Order:</p>
+      <Controller
+        name="notes"
+        control={control}
+        render={({ field }) => (
+          <textarea
+            {...field}
+            rows={12}
+            className="erp-input flex-1 w-full resize-none font-mono text-sm"
+            placeholder="Add internal notes, special instructions, or remarks…"
+            disabled={!isDraft}
+          />
+        )}
+      />
+      {isDraft && (
+        <p className="text-xs text-gray-400 mt-2">Notes are saved with the document when you click Save.</p>
+      )}
+    </div>
+  );
+
+  // ── Suppliers tab ──────────────────────────────────────────────────────────
+  const suppliersContent = (
+    <div className="p-4 space-y-4">
+      {!doc?.supplier ? (
+        <p className="text-sm text-gray-400">Select a supplier to view details.</p>
+      ) : (
+        <>
+          <div className="border border-gray-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Building2 size={14} className="text-blue-500" />
+              <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Supplier Details</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div><span className="text-gray-500">Name:</span> <span className="font-medium text-gray-800">{doc.supplier.name}</span></div>
+              <div><span className="text-gray-500">Code:</span> <span className="font-medium font-mono text-gray-800">{doc.supplier.code}</span></div>
+              {doc.paymentTerms && <div><span className="text-gray-500">Payment Terms:</span> <span className="font-medium text-gray-800">{doc.paymentTerms}</span></div>}
+              {doc.incoterms && <div><span className="text-gray-500">Incoterms:</span> <span className="font-medium text-gray-800">{doc.incoterms}</span></div>}
+            </div>
+          </div>
+
+          {(doc.supplier.contacts?.length ?? 0) > 0 && (
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Phone size={14} className="text-green-500" />
+                <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Contacts</span>
+              </div>
+              <div className="space-y-3">
+                {doc.supplier.contacts!.map((c) => (
+                  <div key={c.id} className="flex items-start gap-4 text-xs">
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-800">{c.name} {c.isPrimary && <span className="ml-1 px-1 py-0.5 bg-blue-100 text-blue-600 rounded text-[10px]">Primary</span>}</p>
+                      {c.designation && <p className="text-gray-500">{c.designation}</p>}
+                    </div>
+                    {c.email && (
+                      <div className="flex items-center gap-1 text-gray-600">
+                        <Mail size={11} />
+                        <span>{c.email}</span>
+                      </div>
+                    )}
+                    {c.phone && (
+                      <div className="flex items-center gap-1 text-gray-600">
+                        <Phone size={11} />
+                        <span>{c.phone}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(doc.supplier.bankDetails?.length ?? 0) > 0 && (
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <CreditCard size={14} className="text-purple-500" />
+                <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Bank Details</span>
+              </div>
+              <div className="space-y-3">
+                {doc.supplier.bankDetails!.filter((b) => b.isActive).map((b) => (
+                  <div key={b.id} className="grid grid-cols-2 gap-2 text-xs border-b border-gray-100 pb-3 last:border-0 last:pb-0">
+                    <div><span className="text-gray-500">Bank:</span> <span className="font-medium text-gray-800">{b.bankName}</span></div>
+                    <div><span className="text-gray-500">Account No:</span> <span className="font-mono text-gray-800">{b.accountNo}</span></div>
+                    {b.iban && <div><span className="text-gray-500">IBAN:</span> <span className="font-mono text-gray-800">{b.iban}</span></div>}
+                    {b.swiftCode && <div><span className="text-gray-500">SWIFT:</span> <span className="font-mono text-gray-800">{b.swiftCode}</span></div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  // ── Warehouse tab ──────────────────────────────────────────────────────────
+  const warehouseContent = (
+    <div className="p-4 space-y-4">
+      <p className="text-xs text-gray-500 mb-2">Default receiving warehouse for this Purchase Order:</p>
+      <div className="grid grid-cols-2 gap-x-8 gap-y-2 max-w-lg">
+        <FormField label="Receiving Warehouse">
+          <Controller
+            name="warehouseId"
+            control={control}
+            render={() => (
+              <LookupField
+                value={warehouse}
+                onChange={(opt) => { setWarehouse(opt); }}
+                onSearch={searchWarehouses}
+                placeholder="Search warehouse…"
+                disabled={!isDraft}
+              />
+            )}
+          />
+        </FormField>
+      </div>
+      {warehouse && (
+        <div className="border border-gray-200 rounded-lg p-4 max-w-md">
+          <div className="flex items-center gap-2 mb-2">
+            <Warehouse size={14} className="text-blue-500" />
+            <span className="text-xs font-semibold text-gray-700">Selected Warehouse</span>
+          </div>
+          <div className="space-y-1 text-xs">
+            <p className="font-medium text-gray-800">{warehouse.label}</p>
+            <p className="font-mono text-gray-500">{warehouse.subLabel}</p>
+          </div>
+        </div>
+      )}
+      {(doc?.grnHeaders?.length ?? 0) > 0 && (
+        <div className="mt-4">
+          <p className="text-xs font-semibold text-gray-700 mb-2">Goods Receipt Notes (GRN):</p>
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-3 py-2 text-left">GRN No</th>
+                <th className="px-3 py-2 text-left">Date</th>
+                <th className="px-3 py-2 text-left">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {doc!.grnHeaders!.map((grn, idx) => (
+                <tr key={grn.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="px-3 py-2 font-mono text-blue-600">{grn.docNo}</td>
+                  <td className="px-3 py-2">{grn.docDate ? format(new Date(grn.docDate), 'dd MMM yyyy') : '—'}</td>
+                  <td className="px-3 py-2"><StatusBadge status={grn.status} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+
+  // ── Budget tab ─────────────────────────────────────────────────────────────
+  const budgetContent = (
+    <div className="p-4">
+      <p className="text-xs text-gray-500 mb-3">Budget commitment by charge code:</p>
+      {lineRows.length === 0 ? (
+        <p className="text-sm text-gray-400">No lines added. Add items to see budget allocation.</p>
+      ) : (
+        <>
+          <table className="w-full text-xs mb-4">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-3 py-2 text-left">Charge Code</th>
+                <th className="px-3 py-2 text-right">Committed Amount</th>
+                <th className="px-3 py-2 text-right">Lines</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(
+                lineRows.reduce<Record<string, { amount: number; count: number }>>((acc, row) => {
+                  const code = row.chargeCodeId ?? 'Unassigned';
+                  if (!acc[code]) acc[code] = { amount: 0, count: 0 };
+                  acc[code].amount += calcNetAmount(row);
+                  acc[code].count += 1;
+                  return acc;
+                }, {})
+              ).map(([code, { amount, count }], idx) => (
+                <tr key={code} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="px-3 py-2 font-mono text-blue-600">{code}</td>
+                  <td className="px-3 py-2 text-right font-medium">{amount.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                  <td className="px-3 py-2 text-right text-gray-500">{count}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-gray-100 border-t border-gray-200">
+              <tr>
+                <td className="px-3 py-2 text-right text-xs font-semibold">Total PO Value:</td>
+                <td className="px-3 py-2 text-right font-bold">{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
+          <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+            <TrendingUp size={13} />
+            <span>Budget vs. actual comparison is available in the Finance &gt; Budget module.</span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  // ── Short Close tab ────────────────────────────────────────────────────────
+  const canShortClose = doc && ['APPROVED', 'PARTIAL'].includes(doc.status);
+  const pendingLines = lineRows.filter((r) => (r.orderedQty ?? 0) > (r.receivedQty ?? 0));
+
+  const shortCloseContent = (
+    <div className="p-4 space-y-4">
+      <p className="text-xs text-gray-500">Short-close marks this PO as CLOSED without full delivery of all ordered quantities.</p>
+      {!canShortClose ? (
+        <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500">
+          <X size={14} />
+          <span>Short close is only available for APPROVED or PARTIAL POs. Current status: <strong>{doc?.status ?? 'DRAFT'}</strong></span>
+        </div>
+      ) : (
+        <>
+          <div className="border border-amber-200 bg-amber-50 rounded-lg p-4">
+            <p className="text-xs font-semibold text-amber-800 mb-2">Pending Lines ({pendingLines.length})</p>
+            {pendingLines.length === 0 ? (
+              <p className="text-xs text-amber-600">All lines fully received. Use normal close instead.</p>
+            ) : (
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-amber-700">
+                    <th className="py-1 text-left">#</th>
+                    <th className="py-1 text-left">Item</th>
+                    <th className="py-1 text-right">Ordered</th>
+                    <th className="py-1 text-right">Received</th>
+                    <th className="py-1 text-right">Pending</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingLines.map((row, idx) => (
+                    <tr key={row._rowId} className="border-t border-amber-100">
+                      <td className="py-1 text-amber-600">{idx + 1}</td>
+                      <td className="py-1 text-amber-800">{row.itemLabel ?? row.itemId ?? '—'}</td>
+                      <td className="py-1 text-right">{(row.orderedQty ?? 0).toLocaleString()}</td>
+                      <td className="py-1 text-right">{(row.receivedQty ?? 0).toLocaleString()}</td>
+                      <td className="py-1 text-right font-medium text-amber-700">{((row.orderedQty ?? 0) - (row.receivedQty ?? 0)).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleShortClose}
+            disabled={shortCloseMutation.isPending || pendingLines.length === 0}
+            className="px-4 py-2 bg-amber-600 text-white text-sm rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {shortCloseMutation.isPending ? 'Closing…' : 'Short Close PO'}
+          </button>
+        </>
+      )}
+    </div>
   );
 
   const tabs = [
     { id: 'key-info', label: 'Key Info', content: keyInfoPanel },
     { id: 'item-details', label: 'Item Details', badge: lineRows.length, content: itemDetailsContent },
-    { id: 'authorization', label: 'Authorization', content: placeholderContent('Authorization') },
-    { id: 'ac-details', label: 'A/C Details', content: placeholderContent('A/C Details') },
-    { id: 'notes', label: 'Notes', content: placeholderContent('Notes') },
-    { id: 'suppliers', label: 'Suppliers', content: placeholderContent('Suppliers') },
-    { id: 'warehouse', label: 'Warehouse D.', content: placeholderContent('Warehouse') },
-    { id: 'budget', label: 'Budget', content: placeholderContent('Budget') },
-    { id: 'short-close', label: 'Short Close', content: placeholderContent('Short Close') },
+    { id: 'authorization', label: 'Authorization', content: authorizationContent },
+    { id: 'ac-details', label: 'A/C Details', content: acDetailsContent },
+    { id: 'notes', label: 'Notes', content: notesContent },
+    { id: 'suppliers', label: 'Suppliers', content: suppliersContent },
+    { id: 'warehouse', label: 'Warehouse D.', content: warehouseContent },
+    { id: 'budget', label: 'Budget', content: budgetContent },
+    { id: 'short-close', label: 'Short Close', content: shortCloseContent },
     { id: 'workflow', label: 'Workflow', content: workflowContent },
   ];
 

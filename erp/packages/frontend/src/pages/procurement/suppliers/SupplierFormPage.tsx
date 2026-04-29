@@ -19,6 +19,31 @@ import {
   searchGlAccounts,
   searchSuppliers,
 } from '../../../api/procurement';
+import {
+  CompanyTab,
+  PaymentTermsTab,
+  BankDetailsTab,
+  NotesTab,
+  CurrencyTab,
+  ProductSupplyTab,
+  BankPaymentTab,
+  IncotermTab,
+  FinanceGroupTab,
+  AddressTab,
+  MoreTab,
+  ApplicableTab,
+  type PaymentTermsData,
+  type NotesData,
+  type CurrencyData,
+  type ProductSupplyRow,
+  type BankPaymentData,
+  type IncotermData,
+  type FinanceGroupData,
+  type AddressData,
+  type MoreData,
+  type ApplicableData,
+} from './SupplierTabs';
+import type { SupplierContact, SupplierBankDetail } from '@clouderp/shared';
 
 // ── Zod Schema ────────────────────────────────────────────────────────────────
 const schema = z.object({
@@ -46,6 +71,99 @@ const SHIPMENT_OPTIONS = [
   { value: 'LAND', label: '3 – Land' },
 ];
 
+// ── Default tab data ──────────────────────────────────────────────────────────
+const defaultPaymentTerms: PaymentTermsData = {
+  creditDays: 0,
+  creditAmount: 0,
+  paymentMethod: '',
+  discountDays: 0,
+  discountPct: 0,
+  dueDateBasis: '',
+  remarks: '',
+};
+
+const defaultNotes: NotesData = {
+  internalNotes: '',
+  externalNotes: '',
+  termsAndConditions: '',
+};
+
+const defaultCurrency: CurrencyData = {
+  defaultCurrency: '',
+  exchangeRate: 1,
+  lockExchangeRate: false,
+  currencyNotes: '',
+};
+
+const defaultBankPayment: BankPaymentData = {
+  preferredBankId: '',
+  paymentReferenceFormat: '',
+  autoPayment: false,
+  paymentApprovalRequired: true,
+  maxSinglePayment: 0,
+  paymentInstructions: '',
+};
+
+const defaultIncoterm: IncotermData = {
+  incoterm: '',
+  deliveryPort: '',
+  freightTerms: '',
+  insuranceBy: '',
+  customsClearanceBy: '',
+  incotermNotes: '',
+};
+
+const defaultFinanceGroup: FinanceGroupData = {
+  financeGroup: '',
+  costCentre: '',
+  budgetCategory: '',
+  taxGroup: '',
+  vatRegistrationNo: '',
+  taxExempt: false,
+  withholdingTaxGroup: '',
+};
+
+const defaultAddress: AddressData = {
+  billingStreet: '',
+  billingCity: '',
+  billingState: '',
+  billingCountry: '',
+  billingPostalCode: '',
+  shippingSameAsBilling: false,
+  shippingStreet: '',
+  shippingCity: '',
+  shippingState: '',
+  shippingCountry: '',
+  shippingPostalCode: '',
+};
+
+const defaultMore: MoreData = {
+  website: '',
+  taxRegNo: '',
+  tradeLicenseNo: '',
+  tradeLicenseExpiry: '',
+  isoCertification: '',
+  isoExpiry: '',
+  supplierCategory: '',
+  ratingScore: 0,
+  blacklisted: false,
+  blacklistReason: '',
+};
+
+const defaultApplicable: ApplicableData = {
+  applicableGoods: false,
+  applicableServices: false,
+  applicableWorks: false,
+  applicableTrade: false,
+  applicableConsulting: false,
+  applicableLogistics: false,
+  approvedFor: [],
+  tags: '',
+  effectiveFrom: '',
+  effectiveTo: '',
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 export default function SupplierFormPage() {
   const { id } = useParams<{ id: string }>();
   const isNew = !id || id === 'new';
@@ -60,6 +178,20 @@ export default function SupplierFormPage() {
 
   const [controlAccount, setControlAccount] = useState<LookupOption | null>(null);
   const [parentSupplier, setParentSupplier] = useState<LookupOption | null>(null);
+
+  // ── Tab state ───────────────────────────────────────────────────────────────
+  const [contacts, setContacts] = useState<SupplierContact[]>([]);
+  const [bankDetails, setBankDetails] = useState<SupplierBankDetail[]>([]);
+  const [paymentTerms, setPaymentTerms] = useState<PaymentTermsData>(defaultPaymentTerms);
+  const [notes, setNotes] = useState<NotesData>(defaultNotes);
+  const [currency, setCurrency] = useState<CurrencyData>(defaultCurrency);
+  const [productSupply, setProductSupply] = useState<ProductSupplyRow[]>([]);
+  const [bankPayment, setBankPayment] = useState<BankPaymentData>(defaultBankPayment);
+  const [incoterm, setIncoterm] = useState<IncotermData>(defaultIncoterm);
+  const [financeGroup, setFinanceGroup] = useState<FinanceGroupData>(defaultFinanceGroup);
+  const [address, setAddress] = useState<AddressData>(defaultAddress);
+  const [more, setMore] = useState<MoreData>(defaultMore);
+  const [applicable, setApplicable] = useState<ApplicableData>(defaultApplicable);
 
   const {
     register,
@@ -108,6 +240,17 @@ export default function SupplierFormPage() {
         printInSoa: false,
         subContractor: false,
       });
+
+      // Populate tab state from API data
+      if (supplier.contacts) setContacts(supplier.contacts);
+      if (supplier.bankDetails) setBankDetails(supplier.bankDetails);
+
+      // Sync payment terms from main supplier fields
+      setPaymentTerms((prev) => ({
+        ...prev,
+        creditDays: supplier.creditDays,
+        creditAmount: Number(supplier.creditAmount),
+      }));
     }
   }, [supplier, reset]);
 
@@ -117,6 +260,20 @@ export default function SupplierFormPage() {
         ...values,
         controlAccountId: controlAccount?.value ?? values.controlAccountId,
         parentSupplierId: !isParentSupplier ? (parentSupplier?.value ?? values.parentSupplierId) : undefined,
+        // Include contact and bank data for create
+        contacts: contacts.map((c) => ({
+          name: c.name,
+          designation: c.designation ?? undefined,
+          email: c.email ?? undefined,
+          phone: c.phone ?? undefined,
+          isPrimary: c.isPrimary,
+        })),
+        bankDetails: bankDetails.map((b) => ({
+          bankName: b.bankName,
+          accountNo: b.accountNo,
+          iban: b.iban ?? undefined,
+          swiftCode: b.swiftCode ?? undefined,
+        })),
       };
 
       if (isNew) {
@@ -330,20 +487,76 @@ export default function SupplierFormPage() {
     </form>
   );
 
+  // ── Bank names for Bank Payment tab ────────────────────────────────────────
+  const bankNames = bankDetails.filter((b) => b.isActive && b.bankName).map((b) => b.bankName);
+
+  const wrap = (node: React.ReactNode) => <div className="p-4">{node}</div>;
+
   // ── Sub tabs ───────────────────────────────────────────────────────────────
   const tabs = [
-    'Company', 'Payment Terms', 'Bank Details', 'Notes', 'Currency',
-    'Product Supply', 'Bank Payment', 'Incoterm', 'Finance Group', 'Address',
-    '*** More', 'Applicable',
-  ].map((t) => ({
-    id: t.toLowerCase().replace(/\s+/g, '-').replace(/\*/g, ''),
-    label: t,
-    content: (
-      <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
-        {t} — configure in a later release
-      </div>
-    ),
-  }));
+    {
+      id: 'company',
+      label: 'Company',
+      content: wrap(<CompanyTab contacts={contacts} onChange={setContacts} />),
+    },
+    {
+      id: 'payment-terms',
+      label: 'Payment Terms',
+      content: wrap(<PaymentTermsTab data={paymentTerms} onChange={setPaymentTerms} />),
+    },
+    {
+      id: 'bank-details',
+      label: 'Bank Details',
+      badge: bankDetails.length > 0 ? bankDetails.length : undefined,
+      content: wrap(<BankDetailsTab bankDetails={bankDetails} onChange={setBankDetails} />),
+    },
+    {
+      id: 'notes',
+      label: 'Notes',
+      content: wrap(<NotesTab data={notes} onChange={setNotes} />),
+    },
+    {
+      id: 'currency',
+      label: 'Currency',
+      content: wrap(<CurrencyTab data={currency} onChange={setCurrency} />),
+    },
+    {
+      id: 'product-supply',
+      label: 'Product Supply',
+      badge: productSupply.length > 0 ? productSupply.length : undefined,
+      content: wrap(<ProductSupplyTab rows={productSupply} onChange={setProductSupply} />),
+    },
+    {
+      id: 'bank-payment',
+      label: 'Bank Payment',
+      content: wrap(<BankPaymentTab data={bankPayment} bankNames={bankNames} onChange={setBankPayment} />),
+    },
+    {
+      id: 'incoterm',
+      label: 'Incoterm',
+      content: wrap(<IncotermTab data={incoterm} onChange={setIncoterm} />),
+    },
+    {
+      id: 'finance-group',
+      label: 'Finance Group',
+      content: wrap(<FinanceGroupTab data={financeGroup} onChange={setFinanceGroup} />),
+    },
+    {
+      id: 'address',
+      label: 'Address',
+      content: wrap(<AddressTab data={address} onChange={setAddress} />),
+    },
+    {
+      id: '-more',
+      label: '*** More',
+      content: wrap(<MoreTab data={more} onChange={setMore} />),
+    },
+    {
+      id: 'applicable',
+      label: 'Applicable',
+      content: wrap(<ApplicableTab data={applicable} onChange={setApplicable} />),
+    },
+  ];
 
   return (
     <div className="flex flex-col h-full">

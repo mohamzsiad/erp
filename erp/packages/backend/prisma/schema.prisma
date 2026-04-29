@@ -145,6 +145,17 @@ enum CostCodeType {
   DEPARTMENT
 }
 
+enum ShortCloseStatus {
+  NONE
+  PARTIAL
+  FULL
+}
+
+enum LeadTimeSource {
+  SYSTEM
+  MANUAL
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // CORE SCHEMA
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -214,11 +225,13 @@ model User {
   updatedAt    DateTime  @updatedAt
 
   // Relations
-  company       Company        @relation(fields: [companyId], references: [id])
-  role          Role           @relation(fields: [roleId], references: [id])
-  location      Location?      @relation(fields: [locationId], references: [id])
-  refreshTokens RefreshToken[]
-  auditLogs     AuditLog[]
+  company                Company         @relation(fields: [companyId], references: [id])
+  role                   Role            @relation(fields: [roleId], references: [id])
+  location               Location?       @relation(fields: [locationId], references: [id])
+  refreshTokens          RefreshToken[]
+  auditLogs              AuditLog[]
+  createdPurchaseOrders  PurchaseOrder[] @relation("PoCreatedBy")
+  approvedPurchaseOrders PurchaseOrder[] @relation("PoApprovedBy")
 
   @@unique([companyId, email])
   @@index([companyId])
@@ -290,6 +303,7 @@ model Location {
   purchaseRequisitions PurchaseRequisition[]
   poShipTo             PurchaseOrder[]       @relation("PoShipToLocation")
   grnHeaders           GrnHeader[]
+  prDeliverySchedules  PrDeliverySchedule[]
 
   @@unique([companyId, code])
   @@map("locations")
@@ -421,6 +435,7 @@ model Supplier {
   grnHeaders      GrnHeader[]
   apInvoices      ApInvoice[]
   apPayments      ApPayment[]
+  itemXRefs       ItemSupplierXRef[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -471,10 +486,11 @@ model MaterialRequisition {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  company     Company   @relation(fields: [companyId], references: [id])
-  location    Location  @relation(fields: [locationId], references: [id])
-  chargeCode  CostCode  @relation(fields: [chargeCodeId], references: [id])
-  lines       MrlLine[]
+  company              Company               @relation(fields: [companyId], references: [id])
+  location             Location              @relation(fields: [locationId], references: [id])
+  chargeCode           CostCode              @relation(fields: [chargeCodeId], references: [id])
+  lines                MrlLine[]
+  purchaseRequisitions PurchaseRequisition[]
 
   @@unique([companyId, docNo])
   @@index([companyId, status])
@@ -518,9 +534,10 @@ model PurchaseRequisition {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  company    Company  @relation(fields: [companyId], references: [id])
-  location   Location @relation(fields: [locationId], references: [id])
-  chargeCode CostCode @relation(fields: [chargeCodeId], references: [id])
+  company    Company             @relation(fields: [companyId], references: [id])
+  location   Location            @relation(fields: [locationId], references: [id])
+  chargeCode CostCode            @relation(fields: [chargeCodeId], references: [id])
+  mrl        MaterialRequisition? @relation(fields: [mrlId], references: [id])
   lines      PrlLine[]
   enquiries  PurchaseEnquiry[]
 
@@ -540,16 +557,108 @@ model PrlLine {
   requestedQty Decimal @db.Decimal(18, 3)
   approvedQty  Decimal @default(0) @db.Decimal(18, 3)
   approxPrice  Decimal @default(0) @db.Decimal(18, 3)
-  chargeCodeId String
-  lineNo       Int
+  chargeCodeId  String
+  lineNo        Int
+  isShortClosed Boolean @default(false)
+
+  // Short Close fields
+  shortClosedQty    Decimal          @default(0) @db.Decimal(18, 3)
+  shortCloseReason  String?          @db.Text
+  shortClosedAt     DateTime?
+  shortClosedById   String?
+  shortCloseStatus  ShortCloseStatus @default(NONE)
+
+  // Lead Time fields
+  leadTimeDays         Int?
+  expectedDeliveryDate DateTime?
+  leadTimeSource       LeadTimeSource @default(SYSTEM)
 
   prl        PurchaseRequisition @relation(fields: [prlId], references: [id], onDelete: Cascade)
   item       Item                @relation(fields: [itemId], references: [id])
   uom        Uom                 @relation(fields: [uomId], references: [id])
   chargeCode CostCode            @relation(fields: [chargeCodeId], references: [id])
 
+  deliverySchedules PrDeliverySchedule[]
+  accountDetails    PrAccountDetail[]
+  alternateItems    PrAlternateItem[]
+  attachments       PrLineAttachment[]
+
   @@index([prlId])
   @@map("prl_lines")
+}
+
+model PrDeliverySchedule {
+  id           String   @id @default(cuid())
+  prlLineId    String
+  deliveryDate DateTime @db.Date
+  qty          Decimal  @db.Decimal(18, 3)
+  locationId   String?
+  remarks      String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  prlLine  PrlLine   @relation(fields: [prlLineId], references: [id], onDelete: Cascade)
+  location Location? @relation(fields: [locationId], references: [id])
+
+  @@index([prlLineId])
+  @@map("pr_delivery_schedules")
+}
+
+model PrAccountDetail {
+  id           String   @id @default(cuid())
+  prlLineId    String
+  glAccountId  String
+  costCentreId String
+  projectCode  String?  @db.VarChar(50)
+  percentage   Decimal  @db.Decimal(5, 2)
+  amount       Decimal  @db.Decimal(18, 3)
+  budgetYear   Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  prlLine    PrlLine   @relation(fields: [prlLineId], references: [id], onDelete: Cascade)
+  glAccount  GlAccount @relation(fields: [glAccountId], references: [id])
+  costCentre CostCode  @relation("PrAccountDetailCostCentre", fields: [costCentreId], references: [id])
+
+  @@index([prlLineId])
+  @@map("pr_account_details")
+}
+
+model PrAlternateItem {
+  id           String   @id @default(cuid())
+  prlLineId    String
+  itemId       String
+  grade1       String?  @db.VarChar(50)
+  grade2       String?  @db.VarChar(50)
+  uom          String?  @db.VarChar(20)
+  approxPrice  Decimal  @default(0) @db.Decimal(18, 3)
+  priority     Int
+  remarks      String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  prlLine PrlLine @relation(fields: [prlLineId], references: [id], onDelete: Cascade)
+  item    Item    @relation(fields: [itemId], references: [id])
+
+  @@index([prlLineId])
+  @@map("pr_alternate_items")
+}
+
+model PrLineAttachment {
+  id          String    @id @default(cuid())
+  prlLineId   String
+  fileName    String    @db.VarChar(255)
+  blobUrl     String    @db.Text
+  blobName    String    @db.VarChar(500)
+  fileSize    Int
+  mimeType    String    @db.VarChar(100)
+  uploadedById String
+  uploadedAt  DateTime  @default(now())
+  deletedAt   DateTime?
+
+  prlLine PrlLine @relation(fields: [prlLineId], references: [id], onDelete: Cascade)
+
+  @@index([prlLineId])
+  @@map("pr_line_attachments")
 }
 
 model PurchaseEnquiry {
@@ -607,6 +716,8 @@ model PurchaseOrder {
   incoterms        String?  @db.VarChar(50)
   deliveryDate     DateTime? @db.Date
   shipToLocationId String?
+  warehouseId      String?
+  notes            String?  @db.Text
   status           PoStatus @default(DRAFT)
   createdById      String
   approvedById     String?
@@ -618,6 +729,9 @@ model PurchaseOrder {
   supplier       Supplier     @relation(fields: [supplierId], references: [id])
   currency       Currency     @relation(fields: [currencyId], references: [id])
   shipToLocation Location?    @relation("PoShipToLocation", fields: [shipToLocationId], references: [id])
+  warehouse      Warehouse?   @relation(fields: [warehouseId], references: [id])
+  createdBy      User         @relation("PoCreatedBy", fields: [createdById], references: [id])
+  approvedBy     User?        @relation("PoApprovedBy", fields: [approvedById], references: [id])
   lines          PoLine[]
   grnHeaders     GrnHeader[]
   apInvoices     ApInvoice[]
@@ -724,10 +838,55 @@ model Item {
   stockIssueLines   StockIssueLine[]
   stockTransferLines StockTransferLine[]
   stockAdjustmentLines StockAdjustmentLine[]
+  prAlternateItems  PrAlternateItem[]
+  supplierXRefs     ItemSupplierXRef[]
+  attachments       ItemAttachment[]
 
   @@unique([companyId, code])
   @@index([companyId, status])
   @@map("items")
+}
+
+model ItemSupplierXRef {
+  id            String   @id @default(cuid())
+  itemId        String
+  supplierId    String
+  supplierCode  String?  @db.VarChar(50)
+  supplierDesc  String?  @db.VarChar(300)
+  uom           String?  @db.VarChar(20)
+  unitPrice     Decimal? @db.Decimal(18, 3)
+  currency      String?  @db.VarChar(10)
+  leadTimeDays  Int      @default(0)
+  minOrderQty   Decimal? @db.Decimal(18, 3)
+  isPreferred   Boolean  @default(false)
+  notes         String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  item     Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  @@unique([itemId, supplierId])
+  @@index([itemId])
+  @@map("item_supplier_xrefs")
+}
+
+model ItemAttachment {
+  id           String    @id @default(cuid())
+  itemId       String
+  fileName     String    @db.VarChar(255)
+  url          String    @db.Text
+  fileSize     Int?
+  mimeType     String?   @db.VarChar(100)
+  description  String?   @db.VarChar(500)
+  uploadedById String
+  uploadedAt   DateTime  @default(now())
+  deletedAt    DateTime?
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId])
+  @@map("item_attachments")
 }
 
 model Warehouse {
@@ -747,6 +906,7 @@ model Warehouse {
   stockTransfersFrom StockTransfer[]    @relation("TransferFrom")
   stockTransfersTo   StockTransfer[]    @relation("TransferTo")
   stockAdjustments  StockAdjustment[]
+  purchaseOrders    PurchaseOrder[]
 
   @@unique([companyId, code])
   @@map("warehouses")
@@ -1022,9 +1182,10 @@ model GlAccount {
   parent          GlAccount?       @relation("AccountParent", fields: [parentId], references: [id])
   children        GlAccount[]      @relation("AccountParent")
   currency        Currency?        @relation(fields: [currencyId], references: [id])
-  journalLines    JournalLine[]
-  budgets         Budget[]
-  accountMappings AccountMapping[]
+  journalLines      JournalLine[]
+  budgets           Budget[]
+  accountMappings   AccountMapping[]
+  prAccountDetails  PrAccountDetail[]
 
   @@unique([companyId, code])
   @@index([companyId, accountType])
@@ -1067,6 +1228,7 @@ model CostCode {
   prlLines             PrlLine[]
   poLines              PoLine[]
   stockIssues          StockIssue[]
+  prAccountDetails     PrAccountDetail[]     @relation("PrAccountDetailCostCentre")
 
   @@unique([companyId, code])
   @@map("cost_codes")

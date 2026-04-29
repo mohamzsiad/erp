@@ -143,7 +143,7 @@ export default async function itemRoutes(fastify: FastifyInstance) {
       tags: ['Inventory - Items'],
       body: {
         type: 'object',
-        required: ['code', 'description', 'uomId', 'categoryId'],
+        required: ['description', 'uomId', 'categoryId'],
         properties: {
           code:           { type: 'string' },
           description:    { type: 'string' },
@@ -176,7 +176,7 @@ export default async function itemRoutes(fastify: FastifyInstance) {
     },
     preHandler: [PERM.EDIT],
   }, async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
-    return reply.send(await svc(req).update(req.params.id, req.body, req.user.companyId));
+    return reply.send(await svc(req).update(req.params.id, req.user.companyId, req.body));
   });
 
   // DELETE /items/:id
@@ -188,6 +188,117 @@ export default async function itemRoutes(fastify: FastifyInstance) {
     preHandler: [PERM.DELETE],
   }, async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     await svc(req).delete(req.params.id, req.user.companyId);
+    return reply.code(204).send();
+  });
+
+  // ── Supplier X-Ref ────────────────────────────────────────────────────────────
+
+  // GET /items/:id/suppliers
+  fastify.get('/:id/suppliers', {
+    schema: {
+      tags: ['Inventory - Items'],
+      params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+    },
+    preHandler: [PERM.VIEW],
+  }, async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    return reply.send(await svc(req).listSupplierXRefs(req.params.id, req.user.companyId));
+  });
+
+  // PUT /items/:id/suppliers
+  fastify.put('/:id/suppliers', {
+    schema: {
+      tags: ['Inventory - Items'],
+      params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+      body: {
+        type: 'object',
+        required: ['rows'],
+        properties: {
+          rows: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['supplierId'],
+              properties: {
+                id:           { type: 'string' },
+                supplierId:   { type: 'string' },
+                supplierCode: { type: 'string' },
+                supplierDesc: { type: 'string' },
+                uom:          { type: 'string' },
+                unitPrice:    { type: 'number' },
+                currency:     { type: 'string' },
+                leadTimeDays: { type: 'integer', minimum: 0 },
+                minOrderQty:  { type: 'number', minimum: 0 },
+                isPreferred:  { type: 'boolean' },
+                notes:        { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+    },
+    preHandler: [PERM.EDIT],
+  }, async (req: FastifyRequest<{ Params: { id: string }; Body: { rows: any[] } }>, reply: FastifyReply) => {
+    return reply.send(await svc(req).upsertSupplierXRef(req.params.id, req.user.companyId, req.body.rows));
+  });
+
+  // DELETE /items/:id/suppliers/:xrefId
+  fastify.delete('/:id/suppliers/:xrefId', {
+    schema: {
+      tags: ['Inventory - Items'],
+      params: { type: 'object', properties: { id: { type: 'string' }, xrefId: { type: 'string' } }, required: ['id', 'xrefId'] },
+    },
+    preHandler: [PERM.EDIT],
+  }, async (req: FastifyRequest<{ Params: { id: string; xrefId: string } }>, reply: FastifyReply) => {
+    await svc(req).deleteSupplierXRef(req.params.xrefId, req.params.id, req.user.companyId);
+    return reply.code(204).send();
+  });
+
+  // ── Attachments ───────────────────────────────────────────────────────────────
+
+  // GET /items/:id/attachments
+  fastify.get('/:id/attachments', {
+    schema: {
+      tags: ['Inventory - Items'],
+      params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+    },
+    preHandler: [PERM.VIEW],
+  }, async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    return reply.send(await svc(req).listAttachments(req.params.id, req.user.companyId));
+  });
+
+  // POST /items/:id/attachments
+  fastify.post('/:id/attachments', {
+    schema: {
+      tags: ['Inventory - Items'],
+      params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+      body: {
+        type: 'object',
+        required: ['fileName', 'url'],
+        properties: {
+          fileName:    { type: 'string' },
+          url:         { type: 'string' },
+          fileSize:    { type: 'integer' },
+          mimeType:    { type: 'string' },
+          description: { type: 'string' },
+        },
+      },
+    },
+    preHandler: [PERM.EDIT],
+  }, async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+    return reply.code(201).send(
+      await svc(req).addAttachment(req.params.id, req.user.companyId, req.user.userId, req.body),
+    );
+  });
+
+  // DELETE /items/:id/attachments/:attId
+  fastify.delete('/:id/attachments/:attId', {
+    schema: {
+      tags: ['Inventory - Items'],
+      params: { type: 'object', properties: { id: { type: 'string' }, attId: { type: 'string' } }, required: ['id', 'attId'] },
+    },
+    preHandler: [PERM.EDIT],
+  }, async (req: FastifyRequest<{ Params: { id: string; attId: string } }>, reply: FastifyReply) => {
+    await svc(req).deleteAttachment(req.params.attId, req.params.id, req.user.companyId);
     return reply.code(204).send();
   });
 }

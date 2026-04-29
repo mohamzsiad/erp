@@ -484,6 +484,28 @@ async function main() {
   }
   console.log(`  ✓ ${workflowDefs.length} Workflow Configs created`);
 
+  // ── 15. Adjustment Reasons ────────────────────────────────────────────────
+  const reasonDefs = [
+    { code: 'DMGD',  name: 'Damaged Goods'        },
+    { code: 'EXPRD', name: 'Expired Items'         },
+    { code: 'THEFT', name: 'Theft / Missing'       },
+    { code: 'CYCLC', name: 'Cycle Count Variance'  },
+    { code: 'WROFF', name: 'Write-off'             },
+    { code: 'RECLS', name: 'Reclassification'      },
+    { code: 'SAMP',  name: 'Sample / Testing'      },
+    { code: 'RTRN',  name: 'Customer Return'       },
+    { code: 'OVER',  name: 'Stock Overage'         },
+    { code: 'UNDR',  name: 'Stock Shortage'        },
+  ];
+  for (const r of reasonDefs) {
+    await prisma.adjustmentReason.upsert({
+      where: { companyId_code: { companyId: company.id, code: r.code } },
+      update: {},
+      create: { companyId: company.id, code: r.code, name: r.name },
+    });
+  }
+  console.log(`  ✓ ${reasonDefs.length} adjustment reasons`);
+
   console.log('\n✅ Seed completed successfully!\n');
   console.log('┌────────────────────────────────────────────┐');
   console.log('│  Default Login Credentials                 │');

@@ -14,7 +14,7 @@ import { useToast } from '../../../components/ui/Toast';
 
 import {
   useGrn, useCreateGrn, useUpdateGrn, usePostGrn, useCancelGrn,
-  searchOpenPos, searchWarehouses, searchBins, fetchPoLines,
+  searchOpenPos, searchWarehouses, searchBins, fetchPoLines, searchItems,
 } from '../../../api/inventory';
 
 // ── Schema ────────────────────────────────────────────────────────────────────
@@ -316,23 +316,46 @@ export default function GrnFormPage() {
             {lines.map((row, idx) => (
               <tr key={row._rowId} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                 <td className="px-2 py-1 text-gray-400">{idx + 1}</td>
-                <td className="px-2 py-1 font-mono text-gray-700">{row.itemCode}</td>
+                <td className="px-1 py-1">
+                  {row.poLineId ? (
+                    <span className="px-1 font-mono text-gray-700">{row.itemCode}</span>
+                  ) : (
+                    <LookupField
+                      value={row.itemId ? { value: row.itemId, label: row.itemCode } : null}
+                      onChange={(opt) => {
+                        const meta = opt?.meta as any;
+                        setLines(prev => prev.map(l => l._rowId !== row._rowId ? l : {
+                          ...l,
+                          itemId:      opt?.value ?? '',
+                          itemCode:    meta?.code ?? '',
+                          description: meta?.description ?? '',
+                          uomCode:     meta?.uom?.code ?? '',
+                          uomId:       meta?.uomId ?? '',
+                        }));
+                      }}
+                      onSearch={searchItems}
+                      placeholder="Item…"
+                      disabled={!isDraft}
+                      className="min-w-[100px]"
+                    />
+                  )}
+                </td>
                 <td className="px-2 py-1 text-gray-600">{row.description}</td>
                 <td className="px-2 py-1 text-gray-500">{row.uomCode}</td>
                 <td className="px-2 py-1 text-right text-gray-500">{row.orderedQty.toFixed(3)}</td>
                 <td className="px-2 py-1 text-right text-gray-400">{row.prevReceived.toFixed(3)}</td>
                 <td className="px-1 py-1">
-                  <input type="number" value={row.receivedQty} step="0.001" min={0}
+                  <input type="number" value={row.receivedQty || ''} step="0.001" min={0}
                     onChange={(e) => updateLine(row._rowId, 'receivedQty', parseFloat(e.target.value) || 0)}
                     className="erp-input w-full text-right" disabled={!isDraft} />
                 </td>
                 <td className="px-1 py-1">
-                  <input type="number" value={row.acceptedQty} step="0.001" min={0}
+                  <input type="number" value={row.acceptedQty || ''} step="0.001" min={0}
                     onChange={(e) => updateLine(row._rowId, 'acceptedQty', parseFloat(e.target.value) || 0)}
                     className="erp-input w-full text-right" disabled={!isDraft} />
                 </td>
                 <td className="px-1 py-1">
-                  <input type="number" value={row.rejectedQty} step="0.001" min={0}
+                  <input type="number" value={row.rejectedQty || ''} step="0.001" min={0}
                     onChange={(e) => updateLine(row._rowId, 'rejectedQty', parseFloat(e.target.value) || 0)}
                     className="erp-input w-full text-right text-red-600" disabled={!isDraft} />
                 </td>

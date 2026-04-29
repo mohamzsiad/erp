@@ -14,6 +14,10 @@ interface KeyInfoItemDetailsTabsProps {
   /** The tab definitions */
   tabs: TabDef[];
   defaultTabId?: string;
+  /** Controlled active tab id */
+  activeTabId?: string;
+  /** Called when user clicks a tab (controlled mode) */
+  onTabChange?: (id: string) => void;
   className?: string;
 }
 
@@ -22,9 +26,13 @@ export const KeyInfoItemDetailsTabs: React.FC<KeyInfoItemDetailsTabsProps> = ({
   keyInfo,
   tabs,
   defaultTabId,
+  activeTabId,
+  onTabChange,
   className,
 }) => {
-  const [activeId, setActiveId] = useState(defaultTabId ?? tabs[0]?.id);
+  const [internalId, setInternalId] = useState(defaultTabId ?? tabs[0]?.id);
+  const activeId   = activeTabId ?? internalId;
+  const setActiveId = (id: string) => { setInternalId(id); onTabChange?.(id); };
 
   const activeTab = tabs.find((t) => t.id === activeId);
 

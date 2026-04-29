@@ -477,6 +477,150 @@ async function main() {
   } catch (e) { wn(`PRLs: ${e}`); }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // 10a. PR LINE SUB-SECTIONS
+  //      Delivery Schedules · A/C Details · Alternate Items · Lead Times · Short Close
+  // ═══════════════════════════════════════════════════════════════════════════
+  hr('10a · PR Line Sub-Sections');
+  try {
+    // Fetch saved PRL lines for the three PRs we will enrich
+    const prl1Lines = prlMap['PR-2025-0001']
+      ? await prisma.prlLine.findMany({ where: { prlId: prlMap['PR-2025-0001'] }, orderBy: { lineNo: 'asc' } })
+      : [];
+    const prl2Lines = prlMap['PR-2025-0002']
+      ? await prisma.prlLine.findMany({ where: { prlId: prlMap['PR-2025-0002'] }, orderBy: { lineNo: 'asc' } })
+      : [];
+    const prl4Lines = prlMap['PR-2025-0004']
+      ? await prisma.prlLine.findMany({ where: { prlId: prlMap['PR-2025-0004'] }, orderBy: { lineNo: 'asc' } })
+      : [];
+
+    let dsCount = 0; let adCount = 0; let aiCount = 0;
+
+    // ── DELIVERY SCHEDULES ───────────────────────────────────────────────────
+    // PR-2025-0001 Line 1 (REBAR-12MM 15 TON) — split into two deliveries
+    if (prl1Lines[0]) {
+      const ex = await prisma.prDeliverySchedule.count({ where: { prlLineId: prl1Lines[0].id } });
+      if (!ex) {
+        await prisma.prDeliverySchedule.createMany({ data: [
+          { prlLineId: prl1Lines[0].id, deliveryDate: d(2025,2,10), qty: 8, locationId: locMap['DUQM-SITE'] ?? null, remarks: 'First batch – urgent for foundation' },
+          { prlLineId: prl1Lines[0].id, deliveryDate: d(2025,2,20), qty: 7, locationId: locMap['DUQM-SITE'] ?? null, remarks: 'Second batch – balance'              },
+        ] }); dsCount += 2;
+      }
+    }
+    // PR-2025-0001 Line 2 (REBAR-16MM 10 TON) — single delivery
+    if (prl1Lines[1]) {
+      const ex = await prisma.prDeliverySchedule.count({ where: { prlLineId: prl1Lines[1].id } });
+      if (!ex) {
+        await prisma.prDeliverySchedule.createMany({ data: [
+          { prlLineId: prl1Lines[1].id, deliveryDate: d(2025,2,15), qty: 10, locationId: locMap['DUQM-SITE'] ?? null },
+        ] }); dsCount += 1;
+      }
+    }
+    // PR-2025-0002 Line 1 (CUCBL-16SQ 500 MTR) — split across two dates
+    if (prl2Lines[0]) {
+      const ex = await prisma.prDeliverySchedule.count({ where: { prlLineId: prl2Lines[0].id } });
+      if (!ex) {
+        await prisma.prDeliverySchedule.createMany({ data: [
+          { prlLineId: prl2Lines[0].id, deliveryDate: d(2025,2,20), qty: 250, locationId: locMap['DUQM-SITE'] ?? null, remarks: 'First fix – Duqm Block A' },
+          { prlLineId: prl2Lines[0].id, deliveryDate: d(2025,3,1),  qty: 250, locationId: locMap['DUQM-SITE'] ?? null, remarks: 'Second fix – Duqm Block B' },
+        ] }); dsCount += 2;
+      }
+    }
+
+    // ── ACCOUNT DETAILS ──────────────────────────────────────────────────────
+    // PR-2025-0001 Line 1 — 60% Material Costs (5300) / 40% Site Overheads (6100) both CC-DUQM
+    if (prl1Lines[0] && glMap['5300'] && glMap['6100'] && codeMap['CC-DUQM']) {
+      const ex = await prisma.prAccountDetail.count({ where: { prlLineId: prl1Lines[0].id } });
+      if (!ex) {
+        const lv = Number(prl1Lines[0].requestedQty) * Number(prl1Lines[0].approxPrice);
+        await prisma.prAccountDetail.createMany({ data: [
+          { prlLineId: prl1Lines[0].id, glAccountId: glMap['5300'], costCentreId: codeMap['CC-DUQM'], percentage: 60,  amount: parseFloat((lv * 0.6).toFixed(3)), budgetYear: 2025 },
+          { prlLineId: prl1Lines[0].id, glAccountId: glMap['6100'], costCentreId: codeMap['CC-DUQM'], percentage: 40,  amount: parseFloat((lv * 0.4).toFixed(3)), budgetYear: 2025 },
+        ] }); adCount += 2;
+      }
+    }
+    // PR-2025-0001 Line 3 (CEMENT-OPC) — 100% Material Costs, CC-DUQM
+    if (prl1Lines[2] && glMap['5300'] && codeMap['CC-DUQM']) {
+      const ex = await prisma.prAccountDetail.count({ where: { prlLineId: prl1Lines[2].id } });
+      if (!ex) {
+        const lv = Number(prl1Lines[2].requestedQty) * Number(prl1Lines[2].approxPrice);
+        await prisma.prAccountDetail.createMany({ data: [
+          { prlLineId: prl1Lines[2].id, glAccountId: glMap['5300'], costCentreId: codeMap['CC-DUQM'], percentage: 100, amount: parseFloat(lv.toFixed(3)), budgetYear: 2025 },
+        ] }); adCount += 1;
+      }
+    }
+    // PR-2025-0002 Line 1 (CUCBL-16SQ) — 100% Material Costs, CC-MEP
+    if (prl2Lines[0] && glMap['5300'] && codeMap['CC-MEP']) {
+      const ex = await prisma.prAccountDetail.count({ where: { prlLineId: prl2Lines[0].id } });
+      if (!ex) {
+        const lv = Number(prl2Lines[0].requestedQty) * Number(prl2Lines[0].approxPrice);
+        await prisma.prAccountDetail.createMany({ data: [
+          { prlLineId: prl2Lines[0].id, glAccountId: glMap['5300'], costCentreId: codeMap['CC-MEP'],  percentage: 100, amount: parseFloat(lv.toFixed(3)), budgetYear: 2025 },
+        ] }); adCount += 1;
+      }
+    }
+
+    // ── ALTERNATE ITEMS ──────────────────────────────────────────────────────
+    // PR-2025-0001 Line 1 (REBAR-12MM) → REBAR-16MM (p1), REBAR-20MM (p2)
+    if (prl1Lines[0] && itemMap['REBAR-16MM'] && itemMap['REBAR-20MM']) {
+      const ex = await prisma.prAlternateItem.count({ where: { prlLineId: prl1Lines[0].id } });
+      if (!ex) {
+        await prisma.prAlternateItem.createMany({ data: [
+          { prlLineId: prl1Lines[0].id, itemId: itemMap['REBAR-16MM'], uom: 'TON', approxPrice: 188.000, priority: 1, remarks: 'Acceptable grade substitution'    },
+          { prlLineId: prl1Lines[0].id, itemId: itemMap['REBAR-20MM'], uom: 'TON', approxPrice: 192.000, priority: 2, remarks: 'Only if 12mm & 16mm unavailable'   },
+        ] }); aiCount += 2;
+      }
+    }
+    // PR-2025-0002 Line 1 (CUCBL-16SQ) → CUCBL-35SQ (p1)
+    if (prl2Lines[0] && itemMap['CUCBL-35SQ']) {
+      const ex = await prisma.prAlternateItem.count({ where: { prlLineId: prl2Lines[0].id } });
+      if (!ex) {
+        await prisma.prAlternateItem.createMany({ data: [
+          { prlLineId: prl2Lines[0].id, itemId: itemMap['CUCBL-35SQ'], uom: 'MTR', approxPrice: 11.200, priority: 1, remarks: 'Higher gauge – use if 16mm stock exhausted' },
+        ] }); aiCount += 1;
+      }
+    }
+    // PR-2025-0002 Line 2 (CUCBL-4SQ) → CUCBL-16SQ (p1)
+    if (prl2Lines[1] && itemMap['CUCBL-16SQ']) {
+      const ex = await prisma.prAlternateItem.count({ where: { prlLineId: prl2Lines[1].id } });
+      if (!ex) {
+        await prisma.prAlternateItem.createMany({ data: [
+          { prlLineId: prl2Lines[1].id, itemId: itemMap['CUCBL-16SQ'], uom: 'MTR', approxPrice: 5.600, priority: 1, remarks: 'Larger gauge accepted by site engineer' },
+        ] }); aiCount += 1;
+      }
+    }
+
+    // ── LEAD TIMES ───────────────────────────────────────────────────────────
+    // Stamp system-derived lead times on PR-2025-0001 & PR-2025-0002 lines
+    const ltUpdates: Array<{ id: string; days: number; date: Date }> = [
+      ...(prl1Lines.map((l, i) => ({ id: l.id, days: 14 + i * 3, date: d(2025, 2, 10 + i * 5) }))),
+      ...(prl2Lines.map((l, i) => ({ id: l.id, days: 21 + i * 2, date: d(2025, 2, 18 + i * 4) }))),
+    ];
+    for (const lt of ltUpdates) {
+      await prisma.prlLine.updateMany({
+        where: { id: lt.id, leadTimeDays: null },
+        data:  { leadTimeDays: lt.days, leadTimeSource: 'SYSTEM', expectedDeliveryDate: lt.date },
+      });
+    }
+
+    // ── SHORT CLOSE ──────────────────────────────────────────────────────────
+    // PR-2025-0004 Line 3 (BNDWRE-16, rq=200 KG) — partial close: 150 received, 50 deferred
+    if (prl4Lines[2]) {
+      await prisma.prlLine.updateMany({
+        where: { id: prl4Lines[2].id, shortCloseStatus: 'NONE' },
+        data:  {
+          shortCloseStatus:  'PARTIAL',
+          shortClosedQty:     150,
+          shortCloseReason:  'Remaining 50 KG deferred to Q2 – site storage full',
+          shortClosedAt:      d(2025, 4, 1),
+          shortClosedById:    adminUser.id,
+        },
+      });
+    }
+
+    ok(`${dsCount} Delivery Schedules · ${adCount} A/C Details · ${aiCount} Alternate Items · lead-time stamps · 1 short-close`);
+  } catch (e) { wn(`PR Sub-Sections: ${e}`); }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // 11. PURCHASE ENQUIRIES / RFQ (3)
   // ═══════════════════════════════════════════════════════════════════════════
   hr('11 · Purchase Enquiries (RFQ)');
@@ -1064,6 +1208,9 @@ async function main() {
       prisma.mrlLine.count()                                       .then(n => ['MRL Lines'          , n] as [string,number]),
       prisma.purchaseRequisition.count({ where: { companyId: company.id } }).then(n => ['PRLs'     , n] as [string,number]),
       prisma.prlLine.count()                                       .then(n => ['PRL Lines'          , n] as [string,number]),
+      prisma.prDeliverySchedule.count()                            .then(n => ['PR Delivery Schedules', n] as [string,number]),
+      prisma.prAccountDetail.count()                               .then(n => ['PR Account Details' , n] as [string,number]),
+      prisma.prAlternateItem.count()                               .then(n => ['PR Alternate Items' , n] as [string,number]),
       prisma.purchaseEnquiry.count({ where: { companyId: company.id } }).then(n => ['RFQs'         , n] as [string,number]),
       prisma.purchaseQuotation.count({ where: { companyId: company.id } }).then(n => ['Quotations' , n] as [string,number]),
       prisma.purchaseOrder.count({ where: { companyId: company.id } }).then(n => ['Purchase Orders', n] as [string,number]),

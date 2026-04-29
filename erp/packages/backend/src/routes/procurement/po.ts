@@ -65,6 +65,8 @@ export default async function poRoutes(fastify: FastifyInstance) {
           docDate: { type: 'string', format: 'date' },
           deliveryDate: { type: 'string', format: 'date' },
           shipToLocationId: { type: 'string' },
+          warehouseId: { type: 'string' },
+          notes: { type: 'string' },
           lines: { type: 'array', items: lineSchema, minItems: 1 },
         },
       },
@@ -99,6 +101,8 @@ export default async function poRoutes(fastify: FastifyInstance) {
           incoterms: { type: 'string' },
           deliveryDate: { type: 'string', format: 'date' },
           shipToLocationId: { type: 'string' },
+          warehouseId: { type: 'string' },
+          notes: { type: 'string' },
           lines: { type: 'array', items: lineSchema },
         },
       },
@@ -128,6 +132,19 @@ export default async function poRoutes(fastify: FastifyInstance) {
     preHandler: [PERM.APPROVE],
   }, async (req: FastifyRequest<{ Params: { id: string }; Body: { comment?: string } }>, reply: FastifyReply) => {
     const result = await svc(req).approve(req.params.id, req.user.companyId, req.user.userId, req.body?.comment);
+    return reply.send(result);
+  });
+
+  // POST /po/:id/reject
+  fastify.post('/:id/reject', {
+    schema: {
+      tags: ['Procurement - PO'],
+      params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+      body: { type: 'object', required: ['comment'], properties: { comment: { type: 'string', minLength: 1 } } },
+    },
+    preHandler: [PERM.APPROVE],
+  }, async (req: FastifyRequest<{ Params: { id: string }; Body: { comment: string } }>, reply: FastifyReply) => {
+    const result = await svc(req).reject(req.params.id, req.user.companyId, req.user.userId, req.body.comment);
     return reply.send(result);
   });
 

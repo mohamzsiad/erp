@@ -39,6 +39,20 @@ interface UpdateSupplierInput {
   isTdsApplicable?: boolean;
   isTdsParty?: boolean;
   isParentSupplier?: boolean;
+  contacts?: Array<{
+    name: string;
+    designation?: string;
+    email?: string;
+    phone?: string;
+    isPrimary?: boolean;
+  }>;
+  bankDetails?: Array<{
+    bankName: string;
+    accountNo: string;
+    iban?: string;
+    swiftCode?: string;
+    isActive?: boolean;
+  }>;
 }
 
 interface ListSuppliersQuery {
@@ -233,6 +247,40 @@ export class SupplierService {
         isParentSupplier: input.isParentSupplier,
       },
     });
+
+    // Replace contacts if provided
+    if (input.contacts !== undefined) {
+      await this.prisma.supplierContact.deleteMany({ where: { supplierId: id } });
+      if (input.contacts.length > 0) {
+        await this.prisma.supplierContact.createMany({
+          data: input.contacts.map((c) => ({
+            supplierId: id,
+            name: c.name,
+            designation: c.designation ?? null,
+            email: c.email ?? null,
+            phone: c.phone ?? null,
+            isPrimary: c.isPrimary ?? false,
+          })),
+        });
+      }
+    }
+
+    // Replace bank details if provided
+    if (input.bankDetails !== undefined) {
+      await this.prisma.supplierBankDetail.deleteMany({ where: { supplierId: id } });
+      if (input.bankDetails.length > 0) {
+        await this.prisma.supplierBankDetail.createMany({
+          data: input.bankDetails.map((b) => ({
+            supplierId: id,
+            bankName: b.bankName,
+            accountNo: b.accountNo,
+            iban: b.iban ?? null,
+            swiftCode: b.swiftCode ?? null,
+            isActive: b.isActive ?? true,
+          })),
+        });
+      }
+    }
 
     await this.prisma.auditLog.create({
       data: {

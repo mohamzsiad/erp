@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { ProtectedRoute } from './router/ProtectedRoute';
 import AppLayout from './components/layout/AppLayout';
+import ChatBot from './components/ai/ChatBot';
 
 // ── Lazy-loaded pages ─────────────────────────────────────────────────────────
 const LoginPage = lazy(() => import('./pages/LoginPage'));
@@ -94,6 +95,7 @@ export default function App() {
         {/* Root redirect */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
+      <ChatBot />
     </Suspense>
   );
 }

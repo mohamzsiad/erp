@@ -15,7 +15,7 @@ export interface ItemListQuery {
 
 export interface CreateItemInput {
   companyId: string;
-  code: string;
+  code?: string;
   description: string;
   shortDescription?: string;
   categoryId?: string;
@@ -84,11 +84,29 @@ export class ItemService {
     return item;
   }
 
+  // ── Auto-generate a unique item code ─────────────────────────────────────────
+  private async generateItemCode(companyId: string, categoryId?: string): Promise<string> {
+    let prefix = 'ITEM';
+    if (categoryId) {
+      const cat = await this.prisma.itemCategory.findFirst({ where: { id: categoryId, companyId } });
+      if (cat?.code) prefix = cat.code.slice(0, 6).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    }
+    const count = await this.prisma.item.count({ where: { companyId, code: { startsWith: prefix } } });
+    const seq = String(count + 1).padStart(4, '0');
+    return `${prefix}-${seq}`;
+  }
+
   // ── Create ───────────────────────────────────────────────────────────────────
-  async create(input: CreateItemInput) {
+  async create(input: CreateItemInput, companyId?: string, userId?: string) {
+    if (companyId) input.companyId = companyId;
+
+    if (!input.code || input.code.trim() === '') {
+      input.code = await this.generateItemCode(input.companyId, input.categoryId);
+    }
+
     // Uniqueness check
     const existing = await this.prisma.item.findFirst({
-      where: { companyId: input.companyId, code: input.code },
+      where: { companyId: input.companyId, code: input.code.toUpperCase().trim() },
     });
     if (existing) {
       throw Object.assign(new Error(`Item code '${input.code}' already exists`), { statusCode: 409 });
@@ -117,11 +135,17 @@ export class ItemService {
   }
 
   // ── Update ───────────────────────────────────────────────────────────────────
-  async update(id: string, companyId: string, input: UpdateItemInput) {
-    await this.getById(id, companyId); // validates existence + ownership
+  async update(id: string, companyId: string, input: UpdateItemInput & { code?: string }) {
+    const existing = await this.getById(id, companyId);
     return this.prisma.item.update({
       where: { id },
       data: {
+        // Auto-generate code if item never got one
+        ...(!existing.code && {
+          code: (input.code?.trim())
+            ? input.code.toUpperCase().trim()
+            : await this.generateItemCode(existing.companyId, existing.categoryId ?? undefined),
+        }),
         ...(input.description !== undefined    && { description: input.description }),
         ...(input.shortDescription !== undefined && { shortDescription: input.shortDescription }),
         ...(input.categoryId !== undefined     && { categoryId: input.categoryId }),
@@ -293,6 +317,120 @@ export class ItemService {
       })
       .filter((r) => r.qtyOnHand <= r.reorderLevel)
       .sort((a, b) => b.shortage - a.shortage);
+  }
+
+  // ── Supplier X-Ref ────────────────────────────────────────────────────────────
+  async listSupplierXRefs(itemId: string, companyId: string) {
+    await this.getById(itemId, companyId);
+    return this.prisma.itemSupplierXRef.findMany({
+      where: { itemId },
+      include: { supplier: { select: { id: true, code: true, name: true } } },
+      orderBy: [{ isPreferred: 'desc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async upsertSupplierXRef(
+    itemId: string,
+    companyId: string,
+    rows: Array<{
+      id?: string;
+      supplierId: string;
+      supplierCode?: string;
+      supplierDesc?: string;
+      uom?: string;
+      unitPrice?: number;
+      currency?: string;
+      leadTimeDays?: number;
+      minOrderQty?: number;
+      isPreferred?: boolean;
+      notes?: string;
+    }>,
+  ) {
+    await this.getById(itemId, companyId);
+    // Delete rows that are no longer in the list
+    const keepIds = rows.filter((r) => r.id).map((r) => r.id as string);
+    await this.prisma.itemSupplierXRef.deleteMany({
+      where: { itemId, id: { notIn: keepIds } },
+    });
+    // Upsert each row
+    for (const row of rows) {
+      if (row.id) {
+        await this.prisma.itemSupplierXRef.update({
+          where: { id: row.id },
+          data: {
+            supplierId:   row.supplierId,
+            supplierCode: row.supplierCode ?? null,
+            supplierDesc: row.supplierDesc ?? null,
+            uom:          row.uom ?? null,
+            unitPrice:    row.unitPrice ?? null,
+            currency:     row.currency ?? null,
+            leadTimeDays: row.leadTimeDays ?? 0,
+            minOrderQty:  row.minOrderQty ?? null,
+            isPreferred:  row.isPreferred ?? false,
+            notes:        row.notes ?? null,
+          },
+        });
+      } else {
+        await this.prisma.itemSupplierXRef.create({
+          data: {
+            itemId,
+            supplierId:   row.supplierId,
+            supplierCode: row.supplierCode ?? null,
+            supplierDesc: row.supplierDesc ?? null,
+            uom:          row.uom ?? null,
+            unitPrice:    row.unitPrice ?? null,
+            currency:     row.currency ?? null,
+            leadTimeDays: row.leadTimeDays ?? 0,
+            minOrderQty:  row.minOrderQty ?? null,
+            isPreferred:  row.isPreferred ?? false,
+            notes:        row.notes ?? null,
+          },
+        });
+      }
+    }
+    return this.listSupplierXRefs(itemId, companyId);
+  }
+
+  async deleteSupplierXRef(xrefId: string, itemId: string, companyId: string) {
+    await this.getById(itemId, companyId);
+    await this.prisma.itemSupplierXRef.deleteMany({ where: { id: xrefId, itemId } });
+  }
+
+  // ── Attachments ───────────────────────────────────────────────────────────────
+  async listAttachments(itemId: string, companyId: string) {
+    await this.getById(itemId, companyId);
+    return this.prisma.itemAttachment.findMany({
+      where: { itemId, deletedAt: null },
+      orderBy: { uploadedAt: 'desc' },
+    });
+  }
+
+  async addAttachment(
+    itemId: string,
+    companyId: string,
+    userId: string,
+    data: { fileName: string; url: string; fileSize?: number; mimeType?: string; description?: string },
+  ) {
+    await this.getById(itemId, companyId);
+    return this.prisma.itemAttachment.create({
+      data: {
+        itemId,
+        fileName:    data.fileName,
+        url:         data.url,
+        fileSize:    data.fileSize ?? null,
+        mimeType:    data.mimeType ?? null,
+        description: data.description ?? null,
+        uploadedById: userId,
+      },
+    });
+  }
+
+  async deleteAttachment(attachmentId: string, itemId: string, companyId: string) {
+    await this.getById(itemId, companyId);
+    await this.prisma.itemAttachment.updateMany({
+      where: { id: attachmentId, itemId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
   }
 
   // ── Item categories CRUD ──────────────────────────────────────────────────────

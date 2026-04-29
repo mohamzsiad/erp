@@ -140,6 +140,34 @@ export default async function supplierRoutes(fastify: FastifyInstance) {
           isTdsApplicable: { type: 'boolean' },
           isTdsParty: { type: 'boolean' },
           isParentSupplier: { type: 'boolean' },
+          contacts: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['name'],
+              properties: {
+                name: { type: 'string' },
+                designation: { type: 'string' },
+                email: { type: 'string' },
+                phone: { type: 'string' },
+                isPrimary: { type: 'boolean' },
+              },
+            },
+          },
+          bankDetails: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['bankName', 'accountNo'],
+              properties: {
+                bankName: { type: 'string' },
+                accountNo: { type: 'string' },
+                iban: { type: 'string' },
+                swiftCode: { type: 'string' },
+                isActive: { type: 'boolean' },
+              },
+            },
+          },
         },
       },
     },

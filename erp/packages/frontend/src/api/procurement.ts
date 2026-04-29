@@ -65,6 +65,22 @@ export interface DocListParams {
   dateTo?: string;
 }
 
+export interface SupplierContactInput {
+  name: string;
+  designation?: string;
+  email?: string;
+  phone?: string;
+  isPrimary?: boolean;
+}
+
+export interface SupplierBankDetailInput {
+  bankName: string;
+  accountNo: string;
+  iban?: string;
+  swiftCode?: string;
+  isActive?: boolean;
+}
+
 export interface CreateSupplierInput {
   name: string;
   shortName: string;
@@ -76,6 +92,8 @@ export interface CreateSupplierInput {
   isTdsApplicable?: boolean;
   isParentSupplier?: boolean;
   parentSupplierId?: string;
+  contacts?: SupplierContactInput[];
+  bankDetails?: SupplierBankDetailInput[];
 }
 
 export interface CreateMrlInput {
@@ -545,8 +563,8 @@ export const searchLocations = async (q: string) => {
 };
 
 export const searchGlAccounts = async (q: string) => {
-  const res = await api.get<{ id: string; code: string; name: string }[]>('/finance/gl-accounts/search', {
-    params: { q },
+  const res = await api.get<{ id: string; code: string; name: string }[]>('/finance/accounts/search', {
+    params: { q, leafOnly: true },
   });
   return res.data.map((a) => ({ value: a.id, label: a.name, subLabel: a.code }));
 };
@@ -558,9 +576,38 @@ export const searchItems = async (q: string) => {
   return res.data.map((i) => ({ value: i.id, label: i.description, subLabel: i.code }));
 };
 
+export const searchCurrencies = async (q: string) => {
+  const res = await api.get<{ id: string; code: string; name: string; symbol: string }[]>('/core/currencies/search', {
+    params: { q },
+  });
+  return res.data.map((c) => ({ value: c.id, label: c.code, subLabel: c.name }));
+};
+
 export const searchChargeCodes = async (q: string) => {
   const res = await api.get<{ id: string; code: string; name: string }[]>('/finance/charge-codes/search', {
     params: { q },
   });
   return res.data.map((c) => ({ value: c.id, label: `${c.code} – ${c.name}`, subLabel: c.code }));
+};
+
+export const searchUoms = async (q: string) => {
+  const res = await api.get<{ id: string; code: string; name: string }[]>('/inventory/items/uoms');
+  return res.data
+    .filter((u) => !q || u.code.toLowerCase().includes(q.toLowerCase()) || u.name.toLowerCase().includes(q.toLowerCase()))
+    .map((u) => ({ value: u.id, label: u.code, subLabel: u.name }));
+};
+
+export const searchWarehouses = async (q: string) => {
+  const res = await api.get<{ data: { id: string; code: string; name: string }[] }>('/inventory/warehouses', {
+    params: { search: q, isActive: true, limit: 20 },
+  });
+  return res.data.data.map((w) => ({ value: w.id, label: w.name, subLabel: w.code }));
+};
+
+export const useShortClosePo = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => poApi.shortClose(id, []),
+    onSuccess: () => qc.invalidateQueries({ queryKey: PO_KEYS.detail(id) }),
+  });
 };

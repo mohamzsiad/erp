@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep *)",
+      "Bash(npx tsc *)",
+      "Bash(DATABASE_URL=\"postgresql://erpadmin:erppassword@localhost:5432/clouderp?schema=public\" npx prisma migrate dev --name \"po_warehouse_notes_user_relations\" --schema=packages/backend/prisma/schema.prisma)",
+      "Bash(tasklist)",
+      "Bash(npm run *)"
+    ]
+  }
+}

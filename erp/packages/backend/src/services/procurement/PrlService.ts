@@ -3,6 +3,21 @@ import { getNextDocNo } from '../../utils/DocNumberService.js';
 import { WorkflowService } from '../WorkflowService.js';
 import { NotificationService } from '../NotificationService.js';
 
+interface UpdatePrlInput {
+  chargeCodeId?: string;
+  deliveryDate?: string;
+  remarks?: string;
+  lines?: Array<{
+    itemId: string;
+    uomId: string;
+    chargeCodeId: string;
+    requestedQty: number;
+    approxPrice?: number;
+    grade1?: string;
+    grade2?: string;
+  }>;
+}
+
 interface CreatePrlInput {
   companyId: string;
   locationId: string;
@@ -68,6 +83,7 @@ export class PrlService {
         include: {
           location: { select: { code: true, name: true } },
           chargeCode: { select: { code: true, name: true } },
+          mrl: { select: { docNo: true } },
           _count: { select: { lines: true } },
         },
       }),
@@ -167,6 +183,47 @@ export class PrlService {
     });
 
     return prl;
+  }
+
+  // ── Update (DRAFT only) ────────────────────────────────────────────────────
+  async update(id: string, companyId: string, input: UpdatePrlInput, userId: string) {
+    const prl = await this.prisma.purchaseRequisition.findFirst({ where: { id, companyId } });
+    if (!prl) throw Object.assign(new Error('PRL not found'), { statusCode: 404 });
+    if (prl.status !== 'DRAFT') {
+      throw Object.assign(new Error('Only DRAFT PRLs can be edited'), { statusCode: 422 });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      if (input.lines) {
+        await tx.prlLine.deleteMany({ where: { prlId: id } });
+        await tx.prlLine.createMany({
+          data: input.lines.map((l, idx) => ({
+            prlId: id,
+            itemId: l.itemId,
+            uomId: l.uomId,
+            chargeCodeId: l.chargeCodeId,
+            requestedQty: l.requestedQty,
+            approvedQty: 0,
+            approxPrice: l.approxPrice ?? 0,
+            grade1: l.grade1 ?? null,
+            grade2: l.grade2 ?? null,
+            freeStock: 0,
+            lineNo: idx + 1,
+            isShortClosed: false,
+          })),
+        });
+      }
+
+      return tx.purchaseRequisition.update({
+        where: { id },
+        data: {
+          chargeCodeId: input.chargeCodeId,
+          deliveryDate: input.deliveryDate ? new Date(input.deliveryDate) : undefined,
+          remarks: input.remarks,
+        },
+        include: { lines: true },
+      });
+    });
   }
 
   // ── Short close specific lines ─────────────────────────────────────────────

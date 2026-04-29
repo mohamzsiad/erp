@@ -86,6 +86,27 @@ export default async function prlRoutes(fastify: FastifyInstance) {
     return reply.send(result);
   });
 
+  // PUT /prl/:id
+  fastify.put('/:id', {
+    schema: {
+      tags: ['Procurement - PRL'],
+      params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+      body: {
+        type: 'object',
+        properties: {
+          chargeCodeId: { type: 'string' },
+          deliveryDate: { type: 'string', format: 'date' },
+          remarks: { type: 'string' },
+          lines: { type: 'array', items: lineSchema, minItems: 1 },
+        },
+      },
+    },
+    preHandler: [PERM.EDIT],
+  }, async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+    const result = await svc(req).update(req.params.id, req.user.companyId, req.body, req.user.userId);
+    return reply.send(result);
+  });
+
   // GET /prl/:id/status
   fastify.get('/:id/status', {
     schema: { tags: ['Procurement - PRL'], params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },

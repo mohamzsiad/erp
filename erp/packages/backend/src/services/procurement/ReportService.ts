@@ -158,7 +158,7 @@ export class ReportService {
         const requested = Number(line.requestedQty);
         const approved = Number(line.approvedQty);
         rows.push({
-          prlId: prl.id,
+          prlId: line.id,
           docNo: prl.docNo,
           docDate: prl.docDate,
           location: (prl as never as { location?: { code: string } }).location?.code ?? prl.locationId,

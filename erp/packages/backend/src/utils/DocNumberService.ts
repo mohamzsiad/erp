@@ -15,13 +15,13 @@ export async function getNextDocNo(
   // Use a raw transaction to atomically increment and return the sequence
   const result = await prisma.$transaction(async (tx) => {
     // Lock the row for update using raw SQL
-    const rows = await tx.$queryRaw<{ next_no: number; prefix: string; pad_length: number }[]>`
+    const rows = await tx.$queryRaw<{ nextNo: number; prefix: string; padLength: number }[]>`
       UPDATE doc_sequences
-      SET next_no = next_no + 1
-      WHERE company_id = ${companyId}
-        AND module     = ${module}
-        AND doc_type   = ${docType}
-      RETURNING next_no, prefix, pad_length
+      SET "nextNo" = "nextNo" + 1
+      WHERE "companyId" = ${companyId}
+        AND "module"    = ${module}
+        AND "docType"   = ${docType}
+      RETURNING "nextNo", prefix, "padLength"
     `;
 
     if (rows.length === 0) {
@@ -31,14 +31,14 @@ export async function getNextDocNo(
       );
     }
 
-    const { next_no, prefix, pad_length } = rows[0];
-    // next_no was just incremented, so the number we want is next_no - 1
-    const seqNumber = next_no - 1;
+    const { nextNo, prefix, padLength } = rows[0];
+    // nextNo was just incremented, so the number we want is nextNo - 1
+    const seqNumber = Number(nextNo) - 1;
 
     // Build: PREFIX + YYYYMM + zero-padded sequence
     const now = new Date();
     const yyyymm = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const padded = String(seqNumber).padStart(pad_length, '0');
+    const padded = String(seqNumber).padStart(Number(padLength), '0');
 
     return `${prefix}-${yyyymm}${padded}`;
   });

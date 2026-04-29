@@ -9,16 +9,6 @@ export default async function dashboardRoutes(fastify: FastifyInstance) {
     schema: {
       tags: ['Dashboard'],
       summary: 'Get all dashboard KPIs in one call',
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            kpis: { type: 'object' },
-            workSummary: { type: 'object' },
-            charts: { type: 'object' },
-          },
-        },
-      },
     },
   }, async (req: FastifyRequest, reply: FastifyReply) => {
     const data = await svc(req).getKpis(req.user.companyId);

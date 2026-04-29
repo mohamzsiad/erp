@@ -141,7 +141,7 @@ export default function TransferFormPage() {
                     onSearch={(q) => searchBins(q, watch('toWarehouseId'))} placeholder="To bin…" disabled={!isDraft} className="min-w-[90px]" />
                 </td>
                 <td className="px-1 py-1">
-                  <input type="number" value={row.transferQty} step="0.001" min={0}
+                  <input type="number" value={row.transferQty || ''} step="0.001" min={0}
                     onChange={(e) => updateLine(row._rowId, 'transferQty', parseFloat(e.target.value) || 0)}
                     className="erp-input w-full text-right" disabled={!isDraft} />
                 </td>

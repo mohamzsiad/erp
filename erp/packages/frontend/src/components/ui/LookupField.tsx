@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, X, Loader2 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -34,8 +35,23 @@ export const LookupField: React.FC<LookupFieldProps> = ({
   const [options, setOptions] = useState<LookupOption[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const inputRef = useRef<HTMLInputElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const updateDropdownPosition = () => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setDropdownStyle({
+      position: 'fixed',
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+      zIndex: 9999,
+    });
+  };
 
   const handleQueryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const q = e.target.value;
@@ -50,6 +66,7 @@ export const LookupField: React.FC<LookupFieldProps> = ({
 
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
+      updateDropdownPosition();
       try {
         const results = await onSearch(q);
         setOptions(results);
@@ -82,7 +99,7 @@ export const LookupField: React.FC<LookupFieldProps> = ({
   }, []);
 
   return (
-    <div className={clsx('relative', className)}>
+    <div ref={wrapperRef} className={clsx('relative', className)}>
       {value ? (
         <div className={clsx(
           'erp-input flex items-center justify-between gap-2',
@@ -112,7 +129,7 @@ export const LookupField: React.FC<LookupFieldProps> = ({
             type="text"
             value={query}
             onChange={handleQueryChange}
-            onFocus={() => query.length >= minChars && options.length > 0 && setOpen(true)}
+            onFocus={() => { if (query.length >= minChars && options.length > 0) { updateDropdownPosition(); setOpen(true); } }}
             onBlur={() => setTimeout(() => setOpen(false), 150)}
             placeholder={placeholder}
             disabled={disabled}
@@ -128,9 +145,9 @@ export const LookupField: React.FC<LookupFieldProps> = ({
         </div>
       )}
 
-      {/* Dropdown */}
-      {open && options.length > 0 && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
+      {/* Dropdown rendered in a portal to escape overflow:auto clipping */}
+      {open && options.length > 0 && createPortal(
+        <div style={dropdownStyle} className="bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto">
           {options.map((opt) => (
             <button
               key={opt.value}
@@ -142,13 +159,15 @@ export const LookupField: React.FC<LookupFieldProps> = ({
               {opt.subLabel && <p className="text-xs text-gray-400">{opt.subLabel}</p>}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
 
-      {open && !loading && options.length === 0 && query.length >= minChars && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2">
+      {open && !loading && options.length === 0 && query.length >= minChars && createPortal(
+        <div style={dropdownStyle} className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2">
           <p className="text-sm text-gray-400">No results found</p>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

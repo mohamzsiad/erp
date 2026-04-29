@@ -1,4 +1,5 @@
 import apiClient from './client';
+import { useAuthStore } from '../store/authStore';
 import type { LoginRequest, LoginResponse } from '@clouderp/shared';
 
 export const authApi = {
@@ -8,12 +9,14 @@ export const authApi = {
   },
 
   refresh: async (): Promise<{ accessToken: string }> => {
-    const { data } = await apiClient.post<{ accessToken: string }>('/auth/refresh');
+    const refreshToken = useAuthStore.getState().refreshToken;
+    const { data } = await apiClient.post<{ accessToken: string }>('/auth/refresh', { refreshToken });
     return data;
   },
 
   logout: async (): Promise<void> => {
-    await apiClient.post('/auth/logout');
+    const refreshToken = useAuthStore.getState().refreshToken;
+    await apiClient.post('/auth/logout', { refreshToken });
   },
 
   me: async (): Promise<LoginResponse> => {

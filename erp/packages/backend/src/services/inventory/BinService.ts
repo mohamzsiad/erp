@@ -4,20 +4,30 @@ export class BinService {
   constructor(private readonly prisma: PrismaClient) {}
 
   async list(opts: { companyId: string; warehouseId?: string; search?: string; page?: number; limit?: number }) {
-    const { companyId, warehouseId, search } = opts;
+    const { companyId, warehouseId, search, page = 1, limit = 50 } = opts;
 
     if (warehouseId) {
       const wh = await this.prisma.warehouse.findFirst({ where: { id: warehouseId, companyId } });
       if (!wh) throw Object.assign(new Error('Warehouse not found'), { statusCode: 404 });
     }
 
-    return this.prisma.bin.findMany({
-      where: {
-        ...(warehouseId ? { warehouseId } : { warehouse: { companyId } }),
-        ...(search ? { OR: [{ code: { contains: search, mode: 'insensitive' } }, { name: { contains: search, mode: 'insensitive' } }] } : {}),
-      },
-      orderBy: { code: 'asc' },
-    });
+    const where = {
+      ...(warehouseId ? { warehouseId } : { warehouse: { companyId } }),
+      ...(search ? { OR: [{ code: { contains: search, mode: 'insensitive' } }, { name: { contains: search, mode: 'insensitive' } }] } : {}),
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.bin.findMany({
+        where,
+        include: { warehouse: { select: { id: true, code: true, name: true } } },
+        orderBy: { code: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.bin.count({ where }),
+    ]);
+
+    return { data, total, page, limit };
   }
 
   async getById(id: string, companyId: string) {

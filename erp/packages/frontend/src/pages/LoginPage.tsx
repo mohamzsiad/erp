@@ -55,7 +55,7 @@ const LoginPage: React.FC = () => {
         email: data.email,
         password: data.password,
       });
-      setAuth(result.user, result.accessToken, result.permissions);
+      setAuth(result.user, result.accessToken, result.refreshToken, result.permissions);
       setModules(result.user.enabledModules as string[]);
       navigate(from, { replace: true });
     } catch (err: unknown) {

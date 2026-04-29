@@ -144,7 +144,7 @@ export default function IssueFormPage() {
                     onSearch={(q) => searchBins(q, watch('warehouseId'))} placeholder="Bin…" disabled={!isDraft} className="min-w-[100px]" />
                 </td>
                 <td className="px-1 py-1">
-                  <input type="number" value={row.issuedQty} step="0.001" min={0}
+                  <input type="number" value={row.issuedQty || ''} step="0.001" min={0}
                     onChange={(e) => updateLine(row._rowId, 'issuedQty', parseFloat(e.target.value) || 0)}
                     className="erp-input w-full text-right" disabled={!isDraft} />
                 </td>

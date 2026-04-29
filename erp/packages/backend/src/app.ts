@@ -18,6 +18,7 @@ import coreRoutes from './routes/core/index.js';
 import workflowRoutes from './routes/workflow/index.js';
 import financeRoutes from './routes/finance/index.js';
 import dashboardRoutes from './routes/dashboard/index.js';
+import aiChatRoutes from './routes/ai/chat.js';
 import { authenticateRequest } from './middleware/authenticate.js';
 
 export async function buildApp() {
@@ -150,6 +151,9 @@ export async function buildApp() {
 
     // Dashboard routes
     await protectedApp.register(dashboardRoutes, { prefix: '/api/v1/dashboard' });
+
+    // AI Chat routes
+    await protectedApp.register(aiChatRoutes, { prefix: '/api/v1/ai' });
   });
 
   // ── Global Error Handler ───────────────────────────────────────────────────

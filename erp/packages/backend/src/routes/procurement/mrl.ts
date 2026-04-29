@@ -96,13 +96,13 @@ export default async function mrlRoutes(fastify: FastifyInstance) {
 
     const [obsoleteStock, inactiveStock, deadStock, pendingIssues, pendingLto, pendingGrn] = await Promise.all([
       prisma.stockBalance.count({
-        where: { companyId, qtyOnHand: { gt: 0 }, item: { status: 'OBSOLETE' }, warehouse: warehouseWhere },
+        where: { qtyOnHand: { gt: 0 }, item: { status: 'OBSOLETE' }, warehouse: warehouseWhere },
       }),
       prisma.stockBalance.count({
-        where: { companyId, qtyOnHand: { gt: 0 }, item: { status: 'INACTIVE' }, warehouse: warehouseWhere },
+        where: { qtyOnHand: { gt: 0 }, item: { status: 'INACTIVE' }, warehouse: warehouseWhere },
       }),
       prisma.stockBalance.count({
-        where: { companyId, qtyOnHand: { gt: 0 }, item: { status: 'DEAD' }, warehouse: warehouseWhere },
+        where: { qtyOnHand: { gt: 0 }, item: { status: 'DEAD' }, warehouse: warehouseWhere },
       }),
       prisma.stockIssue.count({
         where: { companyId, status: 'DRAFT', warehouse: warehouseWhere },

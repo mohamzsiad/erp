@@ -7,12 +7,14 @@ import type { LookupOption } from '../components/ui/LookupField';
 
 // ── Query key factories ────────────────────────────────────────────────────────
 export const INV_KEYS = {
-  items:       { list: (p: object) => ['inv', 'items', 'list', p] as const,   detail: (id: string) => ['inv', 'items', id] as const },
-  itemStock:   (id: string) => ['inv', 'items', id, 'stock'] as const,
-  itemTxns:    (id: string, p: object) => ['inv', 'items', id, 'txns', p] as const,
-  reorder:     ['inv', 'reorder-alerts'] as const,
-  categories:  ['inv', 'categories'] as const,
-  uoms:        ['inv', 'uoms'] as const,
+  items:           { list: (p: object) => ['inv', 'items', 'list', p] as const,   detail: (id: string) => ['inv', 'items', id] as const },
+  itemStock:       (id: string) => ['inv', 'items', id, 'stock'] as const,
+  itemTxns:        (id: string, p: object) => ['inv', 'items', id, 'txns', p] as const,
+  itemSuppliers:   (id: string) => ['inv', 'items', id, 'suppliers'] as const,
+  itemAttachments: (id: string) => ['inv', 'items', id, 'attachments'] as const,
+  reorder:         ['inv', 'reorder-alerts'] as const,
+  categories:      ['inv', 'categories'] as const,
+  uoms:            ['inv', 'uoms'] as const,
   warehouses:  { list: (p: object) => ['inv', 'wh', 'list', p] as const, detail: (id: string) => ['inv', 'wh', id] as const },
   bins:        { list: (p: object) => ['inv', 'bins', 'list', p] as const, detail: (id: string) => ['inv', 'bins', id] as const },
   grn:         { list: (p: object) => ['inv', 'grn', 'list', p] as const,  detail: (id: string) => ['inv', 'grn', id] as const },
@@ -63,6 +65,44 @@ export function useCreateItem() {
 export function useUpdateItem(id: string) {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (body: unknown) => patch(`/inventory/items/${id}`, body), onSuccess: () => qc.invalidateQueries({ queryKey: ['inv', 'items'] }) });
+}
+
+// ── Item Supplier X-Ref ────────────────────────────────────────────────────────
+export function useItemSupplierXRefs(itemId?: string) {
+  return useQuery({ queryKey: INV_KEYS.itemSuppliers(itemId!), queryFn: () => get(`/inventory/items/${itemId}/suppliers`), enabled: !!itemId });
+}
+export function useUpsertItemSupplierXRefs(itemId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rows: unknown[]) => api.put(`/inventory/items/${itemId}/suppliers`, { rows }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: INV_KEYS.itemSuppliers(itemId) }),
+  });
+}
+export function useDeleteItemSupplierXRef(itemId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (xrefId: string) => api.delete(`/inventory/items/${itemId}/suppliers/${xrefId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: INV_KEYS.itemSuppliers(itemId) }),
+  });
+}
+
+// ── Item Attachments ──────────────────────────────────────────────────────────
+export function useItemAttachments(itemId?: string) {
+  return useQuery({ queryKey: INV_KEYS.itemAttachments(itemId!), queryFn: () => get(`/inventory/items/${itemId}/attachments`), enabled: !!itemId });
+}
+export function useAddItemAttachment(itemId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: unknown) => post(`/inventory/items/${itemId}/attachments`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: INV_KEYS.itemAttachments(itemId) }),
+  });
+}
+export function useDeleteItemAttachment(itemId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (attId: string) => api.delete(`/inventory/items/${itemId}/attachments/${attId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: INV_KEYS.itemAttachments(itemId) }),
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

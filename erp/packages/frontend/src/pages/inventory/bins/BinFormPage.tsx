@@ -79,7 +79,7 @@ export default function BinFormPage() {
       <div className="p-6 max-w-2xl">
         <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-2 gap-4">
           <FormField label="Warehouse" required error={errors.warehouseId?.message} className="col-span-2">
-            <LookupField value={warehouse} onChange={(opt) => { setWarehouse(opt); setValue('warehouseId', opt?.value ?? ''); }} onSearch={searchWarehouses} placeholder="Search warehouse…" />
+            <LookupField value={warehouse} onChange={(opt) => { setWarehouse(opt); setValue('warehouseId', opt?.value ?? '', { shouldValidate: true }); }} onSearch={searchWarehouses} placeholder="Search warehouse…" />
           </FormField>
           <FormField label="Bin Code" required error={errors.code?.message}>
             <Input {...register('code')} placeholder="A-01-01" />
