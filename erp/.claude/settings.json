@@ -5,7 +5,20 @@
       "Bash(npx tsc *)",
       "Bash(DATABASE_URL=\"postgresql://erpadmin:erppassword@localhost:5432/clouderp?schema=public\" npx prisma migrate dev --name \"po_warehouse_notes_user_relations\" --schema=packages/backend/prisma/schema.prisma)",
       "Bash(tasklist)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(netstat -ano)",
+      "Bash(curl -s http://localhost:5173/)",
+      "Bash(curl -s http://localhost:5173/src/main.tsx)",
+      "Bash(curl -s http://localhost:5173/src/App.tsx)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5173/src/pages/LoginPage.tsx)",
+      "Bash(curl -s http://localhost:5173/src/pages/LoginPage.tsx)",
+      "Bash(curl -s http://localhost:5173/src/store/moduleStore.ts)",
+      "Bash(curl -s -w \"\\\\nHTTP_CODE:%{http_code}\\\\n\" \"http://localhost:5173/@fs/C:/ERP/ERP/erp/packages/shared/src/index.ts\")",
+      "Bash(curl -s \"http://localhost:5173/@fs/C:/ERP/ERP/erp/packages/shared/src/index.ts\")",
+      "Bash(curl -s \"http://localhost:5173/@fs/C:/ERP/ERP/erp/packages/shared/src/types/index.ts\")",
+      "Bash(curl -s \"http://localhost:5173/@fs/C:/ERP/ERP/erp/packages/shared/src/constants/index.ts\")",
+      "Bash(curl -s \"http://localhost:5173/src/store/moduleStore.ts\")",
+      "Bash(curl -s -w \"\\\\nHTTP:%{http_code}\\\\n\" -o /dev/null http://localhost:5173/)"
     ]
   }
 }

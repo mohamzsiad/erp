@@ -23,6 +23,7 @@ enum Module {
   PROCUREMENT
   INVENTORY
   FINANCE
+  SALES
 }
 
 enum PermissionAction {
@@ -166,6 +167,7 @@ model Company {
   name            String    @db.VarChar(200)
   baseCurrency    String    @db.VarChar(3)
   modulesEnabled  Json      @default("[\"PROCUREMENT\",\"INVENTORY\",\"FINANCE\"]")
+  salesConfig     Json?     // Sales module config params (CREDIT_CHECK_MODE, RESERVE_STOCK_ON_ORDER, etc.)
   timezone        String    @default("UTC") @db.VarChar(50)
   fiscalYearStart Int       @default(1)
   isActive        Boolean   @default(true)
@@ -802,6 +804,15 @@ model Uom {
   stockIssueLines   StockIssueLine[]
   stockTransferLines StockTransferLine[]
   stockAdjustmentLines StockAdjustmentLine[]
+  priceListItems      PriceListItem[]
+  salesEnquiryLines   SalesEnquiryLine[]
+  salesQuotationLines SalesQuotationLine[]
+  salesOrderLines     SalesOrderLine[]
+  deliveryNoteLines   DeliveryNoteLine[]
+  salesInvoiceLines   SalesInvoiceLine[]
+  salesReturnLines    SalesReturnLine[]
+  creditNoteLines     CreditNoteLine[]
+  boqLines            BoqLine[]
 
   @@unique([companyId, code])
   @@map("uoms")
@@ -841,6 +852,14 @@ model Item {
   prAlternateItems  PrAlternateItem[]
   supplierXRefs     ItemSupplierXRef[]
   attachments       ItemAttachment[]
+  priceListItems      PriceListItem[]
+  salesEnquiryLines   SalesEnquiryLine[]
+  salesQuotationLines SalesQuotationLine[]
+  salesOrderLines     SalesOrderLine[]
+  deliveryNoteLines   DeliveryNoteLine[]
+  salesInvoiceLines   SalesInvoiceLine[]
+  salesReturnLines    SalesReturnLine[]
+  creditNoteLines     CreditNoteLine[]
 
   @@unique([companyId, code])
   @@index([companyId, status])
@@ -1279,19 +1298,44 @@ model JournalLine {
 }
 
 model Customer {
-  id        String   @id @default(cuid())
-  companyId String
-  code      String   @db.VarChar(20)
-  name      String   @db.VarChar(200)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String       @id @default(cuid())
+  companyId        String
+  code             String       @db.VarChar(20)
+  name             String       @db.VarChar(200)
+  tradeName        String?      @db.VarChar(200)
+  type             CustomerType @default(COMPANY)
+  trn              String?      @db.VarChar(50)
+  defaultTaxCodeId String?
+  isTaxExempt      Boolean      @default(false)
+  paymentTerms     String?      @db.VarChar(100)
+  creditLimit      Decimal      @default(0) @db.Decimal(18, 3)
+  creditHold       Boolean      @default(false)
+  priceListId      String?
+  salespersonId    String?
+  categoryId       String?
+  notes            String?      @db.Text
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
-  company    Company     @relation(fields: [companyId], references: [id])
-  arInvoices ArInvoice[]
-  arReceipts ArReceipt[]
+  company        Company           @relation(fields: [companyId], references: [id])
+  category       CustomerCategory? @relation(fields: [categoryId], references: [id])
+  defaultTaxCode TaxCode?          @relation(fields: [defaultTaxCodeId], references: [id])
+  priceList      PriceList?        @relation(fields: [priceListId], references: [id])
+  contacts       CustomerContact[]
+  addresses      CustomerAddress[]
+  arInvoices     ArInvoice[]
+  arReceipts     ArReceipt[]
+  salesEnquiries  SalesEnquiry[]
+  salesQuotations SalesQuotation[]
+  salesOrders     SalesOrder[]
+  deliveryNotes   DeliveryNote[]
+  salesInvoices   SalesInvoice[]
+  creditNotes     CreditNote[]
+  salesContracts  SalesContract[]
 
   @@unique([companyId, code])
+  @@index([companyId, categoryId])
   @@map("customers")
 }
 
@@ -1478,7 +1522,7 @@ model PeriodClose {
 model AccountMapping {
   id          String  @id @default(cuid())
   companyId   String
-  mappingType String  @db.VarChar(50)  // INVENTORY_ACCOUNT | SUPPLIER_CONTROL | CUSTOMER_CONTROL | GRN_CLEARING | BANK_ACCOUNT | AP_EXPENSE | AR_REVENUE
+  mappingType String  @db.VarChar(50)  // INVENTORY_ACCOUNT | SUPPLIER_CONTROL | CUSTOMER_CONTROL | GRN_CLEARING | BANK_ACCOUNT | AP_EXPENSE | AR_REVENUE | SALES_REVENUE | VAT_OUTPUT | COGS | CONTRACT_REVENUE
   refId       String? @db.VarChar(50)  // Optional: e.g. itemCategoryId for INVENTORY_ACCOUNT
   accountId   String
 
@@ -1487,4 +1531,653 @@ model AccountMapping {
 
   @@unique([companyId, mappingType, refId])
   @@map("account_mappings")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SALES SCHEMA
+// Order-to-cash: Enquiry → Quotation → Sales Order → Delivery Note → Sales Invoice
+//               (+ Returns / Credit Notes), plus project BOQ progress billing.
+// Convention: companyId, createdById, approvedById, salespersonId, warehouseId,
+// binId, address ids, journalId, arInvoiceId, costCenterId are stored as plain
+// string ids (matching StockMovement / ApInvoice.journalId). Relations are wired
+// for Customer, Item, Uom, TaxCode and intra-sales parent/child links.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum CustomerType {
+  COMPANY
+  INDIVIDUAL
+  GOVERNMENT
+}
+
+enum AddressType {
+  BILL_TO
+  SHIP_TO
+}
+
+enum SalesEnquiryStatus {
+  OPEN
+  QUOTED
+  WON
+  LOST
+  CLOSED
+}
+
+enum SalesQuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum SalesOrderType {
+  STOCK
+  SERVICE
+  PROJECT
+  DIRECT
+}
+
+enum SalesOrderStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  CREDIT_HOLD
+  IN_PROGRESS
+  DELIVERED
+  CLOSED
+  CANCELLED
+}
+
+enum DeliveryNoteStatus {
+  DRAFT
+  DISPATCHED
+  DELIVERED
+}
+
+enum SalesInvoiceStatus {
+  DRAFT
+  POSTED
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum SalesReturnStatus {
+  DRAFT
+  APPROVED
+  RECEIVED
+  CLOSED
+}
+
+enum CreditNoteStatus {
+  DRAFT
+  APPROVED
+  POSTED
+  APPLIED
+  CANCELLED
+}
+
+enum SalesContractStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+  CANCELLED
+}
+
+enum ProgressBillStatus {
+  DRAFT
+  SUBMITTED
+  CERTIFIED
+  POSTED
+}
+
+model TaxCode {
+  id                 String   @id @default(cuid())
+  companyId          String
+  code               String   @db.VarChar(20)
+  name               String   @db.VarChar(100)
+  rate               Decimal  @default(0) @db.Decimal(9, 6)   // percentage, e.g. 5 = 5%
+  vatOutputAccountId String?                                   // GL account for VAT output (soft link)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  customers           Customer[]
+  salesQuotationLines SalesQuotationLine[]
+  salesOrderLines     SalesOrderLine[]
+  salesInvoiceLines   SalesInvoiceLine[]
+  creditNoteLines     CreditNoteLine[]
+
+  @@unique([companyId, code])
+  @@map("tax_codes")
+}
+
+model CustomerCategory {
+  id        String  @id @default(cuid())
+  companyId String
+  code      String  @db.VarChar(20)
+  name      String  @db.VarChar(100)
+  isActive  Boolean @default(true)
+
+  customers Customer[]
+
+  @@unique([companyId, code])
+  @@map("customer_categories")
+}
+
+model CustomerContact {
+  id         String  @id @default(cuid())
+  customerId String
+  name       String  @db.VarChar(150)
+  role       String? @db.VarChar(100)
+  email      String? @db.VarChar(150)
+  phone      String? @db.VarChar(50)
+  isPrimary  Boolean @default(false)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("customer_contacts")
+}
+
+model CustomerAddress {
+  id         String      @id @default(cuid())
+  customerId String
+  type       AddressType
+  line1      String      @db.VarChar(200)
+  line2      String?     @db.VarChar(200)
+  city       String?     @db.VarChar(100)
+  country    String?     @db.VarChar(100)
+  isDefault  Boolean     @default(false)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("customer_addresses")
+}
+
+model PriceList {
+  id         String    @id @default(cuid())
+  companyId  String
+  name       String    @db.VarChar(150)
+  currencyId String?                                 // base currency in this release (soft link)
+  validFrom  DateTime? @db.Date
+  validTo    DateTime? @db.Date
+  isActive   Boolean   @default(true)
+  isDefault  Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  items     PriceListItem[]
+  customers Customer[]
+
+  @@map("price_lists")
+}
+
+model PriceListItem {
+  id          String    @id @default(cuid())
+  priceListId String
+  itemId      String
+  uomId       String
+  unitPrice   Decimal   @db.Decimal(18, 3)
+  minPrice    Decimal   @default(0) @db.Decimal(18, 3)
+  validFrom   DateTime? @db.Date
+  validTo     DateTime? @db.Date
+
+  priceList PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  item      Item      @relation(fields: [itemId], references: [id])
+  uom       Uom       @relation(fields: [uomId], references: [id])
+
+  @@unique([priceListId, itemId, uomId])
+  @@index([itemId])
+  @@map("price_list_items")
+}
+
+model SalesEnquiry {
+  id             String             @id @default(cuid())
+  companyId      String
+  docNo          String             @db.VarChar(30)
+  customerId     String?
+  prospectName   String?            @db.VarChar(200)
+  enquiryDate    DateTime           @db.Date
+  requiredByDate DateTime?          @db.Date
+  salespersonId  String?
+  source         String?            @db.VarChar(100)
+  lostReason     String?            @db.VarChar(300)
+  notes          String?            @db.Text
+  status         SalesEnquiryStatus @default(OPEN)
+  createdById    String
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  customer   Customer?          @relation(fields: [customerId], references: [id])
+  lines      SalesEnquiryLine[]
+  quotations SalesQuotation[]
+
+  @@unique([companyId, docNo])
+  @@index([companyId, status])
+  @@map("sales_enquiries")
+}
+
+model SalesEnquiryLine {
+  id          String   @id @default(cuid())
+  enquiryId   String
+  itemId      String
+  description String?  @db.VarChar(300)
+  uomId       String
+  qty         Decimal  @db.Decimal(18, 3)
+  targetPrice Decimal? @db.Decimal(18, 3)
+  lineNo      Int
+
+  enquiry SalesEnquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  item    Item         @relation(fields: [itemId], references: [id])
+  uom     Uom          @relation(fields: [uomId], references: [id])
+
+  @@index([enquiryId])
+  @@map("sales_enquiry_lines")
+}
+
+model SalesQuotation {
+  id             String               @id @default(cuid())
+  companyId      String
+  docNo          String               @db.VarChar(30)
+  customerId     String
+  enquiryId      String?
+  rev            Int                  @default(0)
+  quotationDate  DateTime             @db.Date
+  validTo        DateTime?            @db.Date
+  paymentTerms   String?              @db.VarChar(100)
+  salespersonId  String?
+  status         SalesQuotationStatus @default(DRAFT)
+  subTotal       Decimal              @default(0) @db.Decimal(18, 3)
+  discountAmount Decimal              @default(0) @db.Decimal(18, 3)
+  taxAmount      Decimal              @default(0) @db.Decimal(18, 3)
+  totalAmount    Decimal              @default(0) @db.Decimal(18, 3)
+  notes          String?              @db.Text
+  createdById    String
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  customer Customer             @relation(fields: [customerId], references: [id])
+  enquiry  SalesEnquiry?        @relation(fields: [enquiryId], references: [id])
+  lines    SalesQuotationLine[]
+  orders   SalesOrder[]
+
+  @@unique([companyId, docNo])
+  @@index([companyId, status])
+  @@map("sales_quotations")
+}
+
+model SalesQuotationLine {
+  id          String   @id @default(cuid())
+  quotationId String
+  itemId      String
+  description String?  @db.VarChar(300)
+  uomId       String
+  qty         Decimal  @db.Decimal(18, 3)
+  unitPrice   Decimal  @db.Decimal(18, 3)
+  discountPct Decimal  @default(0) @db.Decimal(5, 2)
+  taxCodeId   String?
+  netAmount   Decimal  @db.Decimal(18, 3)
+  lineNo      Int
+
+  quotation SalesQuotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  item      Item           @relation(fields: [itemId], references: [id])
+  uom       Uom            @relation(fields: [uomId], references: [id])
+  taxCode   TaxCode?       @relation(fields: [taxCodeId], references: [id])
+
+  @@index([quotationId])
+  @@map("sales_quotation_lines")
+}
+
+model SalesOrder {
+  id               String           @id @default(cuid())
+  companyId        String
+  docNo            String           @db.VarChar(30)
+  customerId       String
+  quotationId      String?
+  contractId       String?
+  orderType        SalesOrderType   @default(STOCK)
+  orderDate        DateTime         @db.Date
+  requestedDate    DateTime?        @db.Date
+  billToAddressId  String?
+  shipToAddressId  String?
+  salespersonId    String?
+  paymentTerms     String?          @db.VarChar(100)
+  warehouseId      String?
+  notes            String?          @db.Text
+  status           SalesOrderStatus @default(DRAFT)
+  creditHoldReason String?          @db.VarChar(300)
+  subTotal         Decimal          @default(0) @db.Decimal(18, 3)
+  discountAmount   Decimal          @default(0) @db.Decimal(18, 3)
+  taxAmount        Decimal          @default(0) @db.Decimal(18, 3)
+  totalAmount      Decimal          @default(0) @db.Decimal(18, 3)
+  createdById      String
+  approvedById     String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  customer      Customer         @relation(fields: [customerId], references: [id])
+  quotation     SalesQuotation?  @relation(fields: [quotationId], references: [id])
+  contract      SalesContract?   @relation(fields: [contractId], references: [id])
+  lines         SalesOrderLine[]
+  deliveryNotes DeliveryNote[]
+  salesInvoices SalesInvoice[]
+
+  @@unique([companyId, docNo])
+  @@index([companyId, status])
+  @@index([customerId])
+  @@map("sales_orders")
+}
+
+model SalesOrderLine {
+  id            String    @id @default(cuid())
+  orderId       String
+  itemId        String
+  description   String?   @db.VarChar(300)
+  uomId         String
+  orderedQty    Decimal   @db.Decimal(18, 3)
+  deliveredQty  Decimal   @default(0) @db.Decimal(18, 3)
+  invoicedQty   Decimal   @default(0) @db.Decimal(18, 3)
+  unitPrice     Decimal   @db.Decimal(18, 3)
+  discountPct   Decimal   @default(0) @db.Decimal(5, 2)
+  taxCodeId     String?
+  netAmount     Decimal   @db.Decimal(18, 3)
+  requestedDate DateTime? @db.Date
+  lineNo        Int
+
+  order         SalesOrder         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  item          Item               @relation(fields: [itemId], references: [id])
+  uom           Uom                @relation(fields: [uomId], references: [id])
+  taxCode       TaxCode?           @relation(fields: [taxCodeId], references: [id])
+  deliveryLines DeliveryNoteLine[]
+
+  @@index([orderId])
+  @@map("sales_order_lines")
+}
+
+model DeliveryNote {
+  id              String             @id @default(cuid())
+  companyId       String
+  docNo           String             @db.VarChar(30)
+  customerId      String
+  salesOrderId    String?
+  deliveryDate    DateTime           @db.Date
+  shipToAddressId String?
+  warehouseId     String
+  vehicleNo       String?            @db.VarChar(50)
+  driver          String?            @db.VarChar(100)
+  notes           String?            @db.Text
+  status          DeliveryNoteStatus @default(DRAFT)
+  createdById     String
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  customer      Customer           @relation(fields: [customerId], references: [id])
+  salesOrder    SalesOrder?        @relation(fields: [salesOrderId], references: [id])
+  lines         DeliveryNoteLine[]
+  salesInvoices SalesInvoice[]
+  salesReturns  SalesReturn[]
+
+  @@unique([companyId, docNo])
+  @@index([companyId, status])
+  @@map("delivery_notes")
+}
+
+model DeliveryNoteLine {
+  id               String  @id @default(cuid())
+  deliveryNoteId   String
+  salesOrderLineId String?
+  itemId           String
+  uomId            String
+  deliveredQty     Decimal @db.Decimal(18, 3)
+  binId            String?
+  unitCost         Decimal @default(0) @db.Decimal(18, 6)
+  lineNo           Int
+
+  deliveryNote   DeliveryNote    @relation(fields: [deliveryNoteId], references: [id], onDelete: Cascade)
+  salesOrderLine SalesOrderLine? @relation(fields: [salesOrderLineId], references: [id])
+  item           Item            @relation(fields: [itemId], references: [id])
+  uom            Uom             @relation(fields: [uomId], references: [id])
+
+  @@index([deliveryNoteId])
+  @@map("delivery_note_lines")
+}
+
+model SalesInvoice {
+  id             String             @id @default(cuid())
+  companyId      String
+  docNo          String             @db.VarChar(30)
+  customerId     String
+  deliveryNoteId String?
+  salesOrderId   String?
+  invoiceDate    DateTime           @db.Date
+  dueDate        DateTime           @db.Date
+  description    String?            @db.VarChar(500)
+  subTotal       Decimal            @default(0) @db.Decimal(18, 3)
+  discountAmount Decimal            @default(0) @db.Decimal(18, 3)
+  amount         Decimal            @default(0) @db.Decimal(18, 3)   // net taxable amount
+  taxAmount      Decimal            @default(0) @db.Decimal(18, 3)
+  totalAmount    Decimal            @default(0) @db.Decimal(18, 3)
+  paidAmount     Decimal            @default(0) @db.Decimal(18, 3)
+  status         SalesInvoiceStatus @default(DRAFT)
+  journalId      String?
+  arInvoiceId    String?
+  createdById    String
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  customer     Customer           @relation(fields: [customerId], references: [id])
+  deliveryNote DeliveryNote?      @relation(fields: [deliveryNoteId], references: [id])
+  salesOrder   SalesOrder?        @relation(fields: [salesOrderId], references: [id])
+  lines        SalesInvoiceLine[]
+  salesReturns SalesReturn[]
+
+  @@unique([companyId, docNo])
+  @@index([companyId, status])
+  @@index([customerId])
+  @@map("sales_invoices")
+}
+
+model SalesInvoiceLine {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  itemId      String
+  description String? @db.VarChar(300)
+  uomId       String
+  qty         Decimal @db.Decimal(18, 3)
+  unitPrice   Decimal @db.Decimal(18, 3)
+  discountPct Decimal @default(0) @db.Decimal(5, 2)
+  taxCodeId   String?
+  netAmount   Decimal @db.Decimal(18, 3)
+  taxAmount   Decimal @default(0) @db.Decimal(18, 3)
+  lineTotal   Decimal @db.Decimal(18, 3)
+  lineNo      Int
+
+  invoice SalesInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  item    Item         @relation(fields: [itemId], references: [id])
+  uom     Uom          @relation(fields: [uomId], references: [id])
+  taxCode TaxCode?     @relation(fields: [taxCodeId], references: [id])
+
+  @@index([invoiceId])
+  @@map("sales_invoice_lines")
+}
+
+model SalesReturn {
+  id             String            @id @default(cuid())
+  companyId      String
+  docNo          String            @db.VarChar(30)
+  salesInvoiceId String?
+  deliveryNoteId String?
+  customerId     String?
+  returnDate     DateTime          @db.Date
+  reason         String?           @db.VarChar(300)
+  status         SalesReturnStatus @default(DRAFT)
+  createdById    String
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  salesInvoice SalesInvoice?     @relation(fields: [salesInvoiceId], references: [id])
+  deliveryNote DeliveryNote?     @relation(fields: [deliveryNoteId], references: [id])
+  lines        SalesReturnLine[]
+  creditNotes  CreditNote[]
+
+  @@unique([companyId, docNo])
+  @@index([companyId, status])
+  @@map("sales_returns")
+}
+
+model SalesReturnLine {
+  id       String  @id @default(cuid())
+  returnId String
+  itemId   String
+  uomId    String
+  qty      Decimal @db.Decimal(18, 3)
+  lineNo   Int
+
+  salesReturn SalesReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  item        Item        @relation(fields: [itemId], references: [id])
+  uom         Uom         @relation(fields: [uomId], references: [id])
+
+  @@index([returnId])
+  @@map("sales_return_lines")
+}
+
+model CreditNote {
+  id            String           @id @default(cuid())
+  companyId     String
+  docNo         String           @db.VarChar(30)
+  customerId    String
+  salesReturnId String?
+  creditDate    DateTime         @db.Date
+  reason        String?          @db.VarChar(300)
+  amount        Decimal          @default(0) @db.Decimal(18, 3)
+  taxAmount     Decimal          @default(0) @db.Decimal(18, 3)
+  totalAmount   Decimal          @default(0) @db.Decimal(18, 3)
+  status        CreditNoteStatus @default(DRAFT)
+  journalId     String?
+  arInvoiceId   String?
+  createdById   String
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  customer    Customer         @relation(fields: [customerId], references: [id])
+  salesReturn SalesReturn?     @relation(fields: [salesReturnId], references: [id])
+  lines       CreditNoteLine[]
+
+  @@unique([companyId, docNo])
+  @@index([companyId, status])
+  @@map("credit_notes")
+}
+
+model CreditNoteLine {
+  id           String  @id @default(cuid())
+  creditNoteId String
+  itemId       String
+  description  String? @db.VarChar(300)
+  uomId        String
+  qty          Decimal @db.Decimal(18, 3)
+  unitPrice    Decimal @db.Decimal(18, 3)
+  taxCodeId    String?
+  netAmount    Decimal @db.Decimal(18, 3)
+  taxAmount    Decimal @default(0) @db.Decimal(18, 3)
+  lineTotal    Decimal @db.Decimal(18, 3)
+  lineNo       Int
+
+  creditNote CreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  item       Item       @relation(fields: [itemId], references: [id])
+  uom        Uom        @relation(fields: [uomId], references: [id])
+  taxCode    TaxCode?   @relation(fields: [taxCodeId], references: [id])
+
+  @@index([creditNoteId])
+  @@map("credit_note_lines")
+}
+
+model SalesContract {
+  id            String              @id @default(cuid())
+  companyId     String
+  docNo         String              @db.VarChar(30)
+  customerId    String
+  projectRef    String?             @db.VarChar(100)
+  projectName   String              @db.VarChar(200)
+  contractValue Decimal             @default(0) @db.Decimal(18, 3)
+  startDate     DateTime?           @db.Date
+  endDate       DateTime?           @db.Date
+  paymentTerms  String?             @db.VarChar(100)
+  costCenterId  String?
+  status        SalesContractStatus @default(DRAFT)
+  createdById   String
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  customer      Customer       @relation(fields: [customerId], references: [id])
+  boqLines      BoqLine[]
+  salesOrders   SalesOrder[]
+  progressBills ProgressBill[]
+
+  @@unique([companyId, docNo])
+  @@index([companyId, status])
+  @@map("sales_contracts")
+}
+
+model BoqLine {
+  id              String  @id @default(cuid())
+  contractId      String
+  section         String? @db.VarChar(100)
+  subSection      String? @db.VarChar(100)
+  itemDescription String  @db.VarChar(500)
+  uomId           String?
+  contractQty     Decimal @db.Decimal(18, 3)
+  rate            Decimal @db.Decimal(18, 3)
+  contractAmount  Decimal @db.Decimal(18, 3)
+  lineNo          Int
+
+  contract          SalesContract      @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  uom               Uom?               @relation(fields: [uomId], references: [id])
+  progressBillLines ProgressBillLine[]
+
+  @@index([contractId])
+  @@map("boq_lines")
+}
+
+model ProgressBill {
+  id            String             @id @default(cuid())
+  companyId     String
+  docNo         String             @db.VarChar(30)
+  contractId    String
+  period        String             @db.VarChar(50)
+  billDate      DateTime           @db.Date
+  amount        Decimal            @default(0) @db.Decimal(18, 3)
+  taxAmount     Decimal            @default(0) @db.Decimal(18, 3)
+  totalAmount   Decimal            @default(0) @db.Decimal(18, 3)
+  status        ProgressBillStatus @default(DRAFT)
+  journalId     String?
+  arInvoiceId   String?
+  certifiedById String?
+  createdById   String
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  contract SalesContract      @relation(fields: [contractId], references: [id])
+  lines    ProgressBillLine[]
+
+  @@unique([companyId, docNo])
+  @@index([companyId, status])
+  @@map("progress_bills")
+}
+
+model ProgressBillLine {
+  id             String  @id @default(cuid())
+  progressBillId String
+  boqLineId      String
+  cumQty         Decimal @default(0) @db.Decimal(18, 3)
+  cumValue       Decimal @default(0) @db.Decimal(18, 3)
+  previousValue  Decimal @default(0) @db.Decimal(18, 3)
+  thisValue      Decimal @default(0) @db.Decimal(18, 3)
+  lineNo         Int
+
+  progressBill ProgressBill @relation(fields: [progressBillId], references: [id], onDelete: Cascade)
+  boqLine      BoqLine      @relation(fields: [boqLineId], references: [id])
+
+  @@index([progressBillId])
+  @@map("progress_bill_lines")
 }

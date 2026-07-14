@@ -13,7 +13,11 @@ export type AccountMappingType =
   | 'GRN_CLEARING'
   | 'BANK_ACCOUNT'
   | 'AP_EXPENSE'
-  | 'AR_REVENUE';
+  | 'AR_REVENUE'
+  | 'SALES_REVENUE'
+  | 'VAT_OUTPUT'
+  | 'COGS'
+  | 'CONTRACT_REVENUE';
 
 // ── GL Account ────────────────────────────────────────────────────────────────
 export interface GlAccount {
@@ -168,11 +172,24 @@ export interface ApAllocation {
 }
 
 // ── AR ────────────────────────────────────────────────────────────────────────
+// Note: full customer master (contacts, addresses, credit) lives in ./sales.ts.
 export interface Customer {
   id: string;
   companyId: string;
   code: string;
   name: string;
+  tradeName?: string | null;
+  type?: 'COMPANY' | 'INDIVIDUAL' | 'GOVERNMENT';
+  trn?: string | null;
+  defaultTaxCodeId?: string | null;
+  isTaxExempt?: boolean;
+  paymentTerms?: string | null;
+  creditLimit?: number;
+  creditHold?: boolean;
+  priceListId?: string | null;
+  salespersonId?: string | null;
+  categoryId?: string | null;
+  notes?: string | null;
   isActive: boolean;
 }
 

@@ -15,7 +15,16 @@ async function main() {
       code: 'DEMO01',
       name: 'Demo Trading LLC',
       baseCurrency: 'USD',
-      modulesEnabled: ['PROCUREMENT', 'INVENTORY', 'FINANCE'],
+      modulesEnabled: ['PROCUREMENT', 'INVENTORY', 'FINANCE', 'SALES'],
+      salesConfig: {
+        CREDIT_CHECK_MODE: 'WARN',
+        RESERVE_STOCK_ON_ORDER: true,
+        ALLOW_NEGATIVE_STOCK: false,
+        SO_APPROVAL_REQUIRED: true,
+        DEFAULT_TAX_CODE: 'VAT5',
+        AUTO_POST_INVOICE: true,
+        PRICE_OVERRIDE_ALLOWED: true,
+      },
       timezone: 'Asia/Muscat',
       fiscalYearStart: 1,
       isActive: true,
@@ -79,12 +88,14 @@ async function main() {
     { code: '2100', name: 'Accounts Payable',     accountType: 'LIABILITY' as const, parentCode: '2000', isControl: true },
     { code: '2200', name: 'GRN Clearing',         accountType: 'LIABILITY' as const, parentCode: '2000' },
     { code: '2300', name: 'Sundry Creditors',     accountType: 'LIABILITY' as const, parentCode: '2000', isControl: true },
+    { code: '2400', name: 'VAT Output Payable',   accountType: 'LIABILITY' as const, parentCode: '2000' },
     // Equity
     { code: '3000', name: 'Equity',               accountType: 'EQUITY' as const,    parentId: null },
     { code: '3100', name: 'Retained Earnings',    accountType: 'EQUITY' as const,    parentCode: '3000' },
     // Revenue
     { code: '4000', name: 'Revenue',              accountType: 'REVENUE' as const,   parentId: null },
     { code: '4100', name: 'Sales Revenue',        accountType: 'REVENUE' as const,   parentCode: '4000' },
+    { code: '4200', name: 'Contract Revenue',     accountType: 'REVENUE' as const,   parentCode: '4000' },
     // Expenses
     { code: '5000', name: 'Operating Expenses',   accountType: 'EXPENSE' as const,   parentId: null },
     { code: '5100', name: 'Cost of Goods Sold',   accountType: 'EXPENSE' as const,   parentCode: '5000' },
@@ -290,6 +301,15 @@ async function main() {
     { module: 'FINANCE',     docType: 'APPAY', prefix: 'APPAY', nextNo: 1, padLength: 4 },
     { module: 'FINANCE',     docType: 'ARINV', prefix: 'ARINV', nextNo: 1, padLength: 4 },
     { module: 'FINANCE',     docType: 'ARREC', prefix: 'ARREC', nextNo: 1, padLength: 4 },
+    { module: 'SALES',       docType: 'SEL',  prefix: 'SEL',  nextNo: 1, padLength: 4 },
+    { module: 'SALES',       docType: 'SQL',  prefix: 'SQL',  nextNo: 1, padLength: 4 },
+    { module: 'SALES',       docType: 'SOL',  prefix: 'SOL',  nextNo: 1, padLength: 4 },
+    { module: 'SALES',       docType: 'DNL',  prefix: 'DNL',  nextNo: 1, padLength: 4 },
+    { module: 'SALES',       docType: 'SVL',  prefix: 'SVL',  nextNo: 1, padLength: 4 },
+    { module: 'SALES',       docType: 'SRN',  prefix: 'SRN',  nextNo: 1, padLength: 4 },
+    { module: 'SALES',       docType: 'CRN',  prefix: 'CRN',  nextNo: 1, padLength: 4 },
+    { module: 'SALES',       docType: 'SCL',  prefix: 'SCL',  nextNo: 1, padLength: 4 },
+    { module: 'SALES',       docType: 'PBL',  prefix: 'PBL',  nextNo: 1, padLength: 4 },
   ];
 
   for (const seq of sequenceDefs) {
@@ -410,6 +430,10 @@ async function main() {
     { mappingType: 'BANK_ACCOUNT',      accountCode: '1110' },  // Main Bank Account
     { mappingType: 'AP_EXPENSE',        accountCode: '5300' },  // Purchase Expense
     { mappingType: 'AR_REVENUE',        accountCode: '4100' },  // Sales Revenue
+    { mappingType: 'SALES_REVENUE',     accountCode: '4100' },  // Sales Revenue
+    { mappingType: 'VAT_OUTPUT',        accountCode: '2400' },  // VAT Output Payable
+    { mappingType: 'COGS',              accountCode: '5100' },  // Cost of Goods Sold
+    { mappingType: 'CONTRACT_REVENUE',  accountCode: '4200' },  // Contract Revenue
   ];
   for (const m of accountMappingDefs) {
     const accountId = glMap[m.accountCode];
@@ -426,18 +450,120 @@ async function main() {
   }
   console.log(`  ✓ ${accountMappingDefs.length} Account Mappings created`);
 
-  // ── 13. Sample Customers (AR) ─────────────────────────────────────────────
+  // ── 13. Sales Masters: Tax Codes ──────────────────────────────────────────
+  console.log('Creating sales tax codes...');
+  const taxCodeDefs = [
+    { code: 'VAT5',   name: 'VAT 5%',     rate: 5, vatAccount: '2400' as string | null },
+    { code: 'ZERO',   name: 'Zero-rated', rate: 0, vatAccount: null },
+    { code: 'EXEMPT', name: 'VAT Exempt', rate: 0, vatAccount: null },
+  ];
+  const taxCodeMap: Record<string, string> = {};
+  for (const tc of taxCodeDefs) {
+    const rec = await prisma.taxCode.upsert({
+      where: { companyId_code: { companyId: company.id, code: tc.code } },
+      update: {},
+      create: {
+        companyId: company.id,
+        code: tc.code,
+        name: tc.name,
+        rate: tc.rate,
+        vatOutputAccountId: tc.vatAccount ? (glMap[tc.vatAccount] ?? null) : null,
+        isActive: true,
+      },
+    });
+    taxCodeMap[tc.code] = rec.id;
+  }
+  console.log(`  ✓ ${taxCodeDefs.length} Tax Codes created`);
+
+  // ── 14. Customer Category & Default Price List ────────────────────────────
+  console.log('Creating customer category & price list...');
+  const keyAccounts = await prisma.customerCategory.upsert({
+    where: { companyId_code: { companyId: company.id, code: 'KEY' } },
+    update: {},
+    create: { companyId: company.id, code: 'KEY', name: 'Key Accounts' },
+  });
+
+  let priceList = await prisma.priceList.findFirst({
+    where: { companyId: company.id, name: 'Standard Price List' },
+  });
+  if (!priceList) {
+    priceList = await prisma.priceList.create({
+      data: {
+        companyId: company.id,
+        name: 'Standard Price List',
+        currencyId: currencies['USD']?.id ?? null,
+        isActive: true,
+        isDefault: true,
+      },
+    });
+  }
+
+  const plItems = await prisma.item.findMany({
+    where: { companyId: company.id, code: { in: sampleItems.map((i) => i.code) } },
+  });
+  for (const it of plItems) {
+    const base = sampleItems.find((s) => s.code === it.code)!;
+    await prisma.priceListItem.upsert({
+      where: { priceListId_itemId_uomId: { priceListId: priceList.id, itemId: it.id, uomId: it.uomId } },
+      update: {},
+      create: {
+        priceListId: priceList.id,
+        itemId: it.id,
+        uomId: it.uomId,
+        unitPrice: Number((base.standardCost * 1.35).toFixed(3)),
+        minPrice: Number((base.standardCost * 1.1).toFixed(3)),
+      },
+    });
+  }
+  console.log(`  ✓ Default price list with ${plItems.length} items created`);
+
+  // ── 15. Sample Customers (full master) ────────────────────────────────────
   console.log('Creating sample customers...');
   const customerDefs = [
-    { code: 'CUST001', name: 'Oman Oil Company SAOC' },
-    { code: 'CUST002', name: 'PDO Petroleum Development Oman' },
-    { code: 'CUST003', name: 'Sohar Aluminium Company LLC' },
+    {
+      code: 'CUST001', name: 'Oman Oil Company SAOC', type: 'COMPANY', trn: 'OM1000012345',
+      paymentTerms: 'Net 30', creditLimit: 500000,
+      contact: { name: 'Ahmed Al Balushi', role: 'Procurement Manager', email: 'ahmed@omanoil.example', phone: '+968 2400 0001' },
+      address: { line1: 'Mina Al Fahal', city: 'Muscat', country: 'Oman' },
+    },
+    {
+      code: 'CUST002', name: 'PDO Petroleum Development Oman', type: 'COMPANY', trn: 'OM1000067890',
+      paymentTerms: 'Net 45', creditLimit: 750000,
+      contact: { name: 'Salim Al Harthy', role: 'Contracts Lead', email: 'salim@pdo.example', phone: '+968 2400 0002' },
+      address: { line1: 'Mina Al Fahal Road', city: 'Muscat', country: 'Oman' },
+    },
+    {
+      code: 'CUST003', name: 'Sohar Aluminium Company LLC', type: 'COMPANY', trn: 'OM1000054321',
+      paymentTerms: 'Net 30', creditLimit: 300000,
+      contact: { name: 'Fatma Al Zadjali', role: 'Buyer', email: 'fatma@sohar-alu.example', phone: '+968 2600 0003' },
+      address: { line1: 'Sohar Industrial Port', city: 'Sohar', country: 'Oman' },
+    },
   ];
   for (const c of customerDefs) {
     await prisma.customer.upsert({
       where: { companyId_code: { companyId: company.id, code: c.code } },
       update: {},
-      create: { companyId: company.id, ...c, isActive: true },
+      create: {
+        companyId: company.id,
+        code: c.code,
+        name: c.name,
+        type: c.type as any,
+        trn: c.trn,
+        paymentTerms: c.paymentTerms,
+        creditLimit: c.creditLimit,
+        defaultTaxCodeId: taxCodeMap['VAT5'],
+        categoryId: keyAccounts.id,
+        priceListId: priceList.id,
+        salespersonId: adminUser.id,
+        isActive: true,
+        contacts: { create: [{ name: c.contact.name, role: c.contact.role, email: c.contact.email, phone: c.contact.phone, isPrimary: true }] },
+        addresses: {
+          create: [
+            { type: 'BILL_TO' as any, line1: c.address.line1, city: c.address.city, country: c.address.country, isDefault: true },
+            { type: 'SHIP_TO' as any, line1: c.address.line1, city: c.address.city, country: c.address.country, isDefault: true },
+          ],
+        },
+      },
     });
   }
   console.log(`  ✓ ${customerDefs.length} Sample Customers created`);
