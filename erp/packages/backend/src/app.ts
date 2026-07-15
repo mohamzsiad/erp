@@ -17,6 +17,7 @@ import notificationRoutes from './routes/notifications/index.js';
 import coreRoutes from './routes/core/index.js';
 import workflowRoutes from './routes/workflow/index.js';
 import financeRoutes from './routes/finance/index.js';
+import salesRoutes from './routes/sales/index.js';
 import dashboardRoutes from './routes/dashboard/index.js';
 import aiChatRoutes from './routes/ai/chat.js';
 import { authenticateRequest } from './middleware/authenticate.js';
@@ -148,6 +149,9 @@ export async function buildApp() {
 
     // Finance routes
     await protectedApp.register(financeRoutes, { prefix: '/api/v1/finance' });
+
+    // Sales routes
+    await protectedApp.register(salesRoutes, { prefix: '/api/v1/sales' });
 
     // Dashboard routes
     await protectedApp.register(dashboardRoutes, { prefix: '/api/v1/dashboard' });

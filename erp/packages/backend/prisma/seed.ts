@@ -189,6 +189,15 @@ async function main() {
       { module: Module.FINANCE, resource: r, action: PermissionAction.APPROVE },
       { module: Module.FINANCE, resource: r, action: PermissionAction.DELETE },
     ])).flat(),
+    ...['CUSTOMERS', 'PRICE_LIST', 'SALES_ENQUIRY', 'SALES_QUOTATION', 'SALES_ORDER', 'DELIVERY_NOTE', 'SALES_INVOICE', 'SALES_RETURN', 'CREDIT_NOTE', 'SALES_CONTRACT', 'PROGRESS_BILL', 'CREDIT_CONTROL'].map(r => ([
+      { module: Module.SALES, resource: r, action: PermissionAction.VIEW },
+      { module: Module.SALES, resource: r, action: PermissionAction.CREATE },
+      { module: Module.SALES, resource: r, action: PermissionAction.EDIT },
+      { module: Module.SALES, resource: r, action: PermissionAction.APPROVE },
+      { module: Module.SALES, resource: r, action: PermissionAction.DELETE },
+      { module: Module.SALES, resource: r, action: PermissionAction.VOID },
+    ])).flat(),
+    { module: Module.SALES, resource: 'REPORTS', action: PermissionAction.VIEW },
   ];
 
   const procMgrPerms: PermDef[] = [
@@ -239,11 +248,79 @@ async function main() {
     ])).flat(),
   ];
 
+  const salesMgrPerms: PermDef[] = [
+    ...['CUSTOMERS', 'PRICE_LIST', 'SALES_ENQUIRY', 'SALES_QUOTATION', 'SALES_ORDER', 'DELIVERY_NOTE', 'SALES_INVOICE', 'SALES_RETURN', 'CREDIT_NOTE', 'SALES_CONTRACT', 'PROGRESS_BILL'].map(r => ([
+      { module: Module.SALES, resource: r, action: PermissionAction.VIEW },
+      { module: Module.SALES, resource: r, action: PermissionAction.CREATE },
+      { module: Module.SALES, resource: r, action: PermissionAction.EDIT },
+      { module: Module.SALES, resource: r, action: PermissionAction.APPROVE },
+      { module: Module.SALES, resource: r, action: PermissionAction.DELETE },
+    ])).flat(),
+    { module: Module.SALES, resource: 'REPORTS', action: PermissionAction.VIEW },
+    { module: Module.SALES, resource: 'CREDIT_CONTROL', action: PermissionAction.VIEW },
+    // Read-only inventory + AR
+    { module: Module.INVENTORY, resource: 'ITEMS', action: PermissionAction.VIEW },
+    { module: Module.INVENTORY, resource: 'STOCK_SUMMARY', action: PermissionAction.VIEW },
+    { module: Module.FINANCE, resource: 'AR', action: PermissionAction.VIEW },
+  ];
+
+  const salesOfficerPerms: PermDef[] = [
+    ...['CUSTOMERS', 'SALES_ENQUIRY', 'SALES_QUOTATION', 'SALES_ORDER'].map(r => ([
+      { module: Module.SALES, resource: r, action: PermissionAction.VIEW },
+      { module: Module.SALES, resource: r, action: PermissionAction.CREATE },
+      { module: Module.SALES, resource: r, action: PermissionAction.EDIT },
+    ])).flat(),
+    { module: Module.SALES, resource: 'PRICE_LIST', action: PermissionAction.VIEW },
+    { module: Module.SALES, resource: 'DELIVERY_NOTE', action: PermissionAction.VIEW },
+    { module: Module.SALES, resource: 'SALES_INVOICE', action: PermissionAction.VIEW },
+    { module: Module.INVENTORY, resource: 'ITEMS', action: PermissionAction.VIEW },
+  ];
+
+  const salesCoordPerms: PermDef[] = [
+    ...['DELIVERY_NOTE'].map(r => ([
+      { module: Module.SALES, resource: r, action: PermissionAction.VIEW },
+      { module: Module.SALES, resource: r, action: PermissionAction.CREATE },
+      { module: Module.SALES, resource: r, action: PermissionAction.EDIT },
+    ])).flat(),
+    { module: Module.SALES, resource: 'SALES_ORDER', action: PermissionAction.VIEW },
+    { module: Module.SALES, resource: 'CUSTOMERS', action: PermissionAction.VIEW },
+    { module: Module.INVENTORY, resource: 'ITEMS', action: PermissionAction.VIEW },
+    { module: Module.INVENTORY, resource: 'STOCK_SUMMARY', action: PermissionAction.VIEW },
+  ];
+
+  const creditCtrlPerms: PermDef[] = [
+    { module: Module.SALES, resource: 'CREDIT_CONTROL', action: PermissionAction.VIEW },
+    { module: Module.SALES, resource: 'CREDIT_CONTROL', action: PermissionAction.EDIT },
+    { module: Module.SALES, resource: 'CREDIT_CONTROL', action: PermissionAction.APPROVE },
+    { module: Module.SALES, resource: 'CUSTOMERS', action: PermissionAction.VIEW },
+    { module: Module.SALES, resource: 'CUSTOMERS', action: PermissionAction.EDIT },
+    { module: Module.SALES, resource: 'SALES_ORDER', action: PermissionAction.VIEW },
+    { module: Module.SALES, resource: 'SALES_ORDER', action: PermissionAction.APPROVE },
+    { module: Module.FINANCE, resource: 'AR', action: PermissionAction.VIEW },
+  ];
+
+  const billingPerms: PermDef[] = [
+    ...['SALES_INVOICE', 'PROGRESS_BILL', 'CREDIT_NOTE'].map(r => ([
+      { module: Module.SALES, resource: r, action: PermissionAction.VIEW },
+      { module: Module.SALES, resource: r, action: PermissionAction.CREATE },
+      { module: Module.SALES, resource: r, action: PermissionAction.EDIT },
+    ])).flat(),
+    { module: Module.SALES, resource: 'CUSTOMERS', action: PermissionAction.VIEW },
+    { module: Module.SALES, resource: 'DELIVERY_NOTE', action: PermissionAction.VIEW },
+    { module: Module.FINANCE, resource: 'AR', action: PermissionAction.VIEW },
+    { module: Module.FINANCE, resource: 'AR', action: PermissionAction.CREATE },
+  ];
+
   const roleDefs = [
-    { name: 'SYSTEM_ADMIN',        description: 'Full system access',           perms: adminPerms   },
-    { name: 'PROCUREMENT_MANAGER', description: 'Procurement module manager',   perms: procMgrPerms },
-    { name: 'INVENTORY_MANAGER',   description: 'Inventory module manager',     perms: invMgrPerms  },
-    { name: 'FINANCE_MANAGER',     description: 'Finance module manager',       perms: finMgrPerms  },
+    { name: 'SYSTEM_ADMIN',        description: 'Full system access',           perms: adminPerms       },
+    { name: 'PROCUREMENT_MANAGER', description: 'Procurement module manager',   perms: procMgrPerms     },
+    { name: 'INVENTORY_MANAGER',   description: 'Inventory module manager',     perms: invMgrPerms      },
+    { name: 'FINANCE_MANAGER',     description: 'Finance module manager',       perms: finMgrPerms      },
+    { name: 'SALES_MANAGER',       description: 'Sales module manager',         perms: salesMgrPerms    },
+    { name: 'SALES_OFFICER',       description: 'Sales officer',                perms: salesOfficerPerms },
+    { name: 'SALES_COORDINATOR',   description: 'Sales fulfilment coordinator', perms: salesCoordPerms  },
+    { name: 'CREDIT_CONTROLLER',   description: 'Credit control',               perms: creditCtrlPerms  },
+    { name: 'BILLING_OFFICER',     description: 'Billing officer',              perms: billingPerms     },
   ];
 
   const roles: Record<string, string> = {};
@@ -263,7 +340,7 @@ async function main() {
     await prisma.permission.deleteMany({ where: { roleId: role.id } });
     await prisma.permission.createMany({ data: rd.perms.map(p => ({ ...p, roleId: role.id })), skipDuplicates: true });
   }
-  console.log(`  ✓ 4 System Roles created with permissions`);
+  console.log(`  ✓ ${roleDefs.length} System Roles created with permissions`);
 
   // ── 7. Admin User ─────────────────────────────────────────────────────────
   console.log('Creating admin user...');

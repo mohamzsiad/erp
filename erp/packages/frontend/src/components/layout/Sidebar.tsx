@@ -221,6 +221,32 @@ const NAV_TREE: NavItem[] = [
     ],
   },
   {
+    id: 'sales',
+    label: 'Sales',
+    icon: <Wallet size={16} />,
+    module: 'SALES',
+    children: [
+      {
+        id: 'sales-masters',
+        label: 'Masters',
+        icon: <Users size={14} />,
+        children: [
+          { id: 'customer-list', label: 'Customer Master', path: '/sales/customers', icon: <Building2 size={13} /> },
+          { id: 'pricelist-list', label: 'Price Lists', path: '/sales/price-lists', icon: <FileText size={13} /> },
+        ],
+      },
+      {
+        id: 'sales-transactions',
+        label: 'Transactions',
+        icon: <ClipboardList size={14} />,
+        children: [
+          { id: 'enquiry-list', label: 'Sales Enquiries', path: '/sales/enquiries', icon: <Search size={13} /> },
+          { id: 'quotation-list', label: 'Quotations', path: '/sales/quotations', icon: <FileText size={13} /> },
+        ],
+      },
+    ],
+  },
+  {
     id: 'admin',
     label: 'Administration',
     icon: <Settings size={16} />,

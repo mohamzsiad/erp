@@ -18,7 +18,12 @@
       "Bash(curl -s \"http://localhost:5173/@fs/C:/ERP/ERP/erp/packages/shared/src/types/index.ts\")",
       "Bash(curl -s \"http://localhost:5173/@fs/C:/ERP/ERP/erp/packages/shared/src/constants/index.ts\")",
       "Bash(curl -s \"http://localhost:5173/src/store/moduleStore.ts\")",
-      "Bash(curl -s -w \"\\\\nHTTP:%{http_code}\\\\n\" -o /dev/null http://localhost:5173/)"
+      "Bash(curl -s -w \"\\\\nHTTP:%{http_code}\\\\n\" -o /dev/null http://localhost:5173/)",
+      "PowerShell(Get-Process node -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, StartTime; Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object {$_.LocalPort -in 3000,5173} | Select-Object LocalPort,OwningProcess)",
+      "PowerShell(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object {$_.OwningProcess -in 5444,10204,10836,12452,14664,19732} | Select-Object LocalPort,OwningProcess | Sort-Object LocalPort)",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"ProcessId=10204 or ProcessId=10836 or ProcessId=12452 or ProcessId=14664 or ProcessId=19732\")",
+      "PowerShell(Stop-Process -Id 19732,12452 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process -Id 19732,12452 -ErrorAction SilentlyContinue)"
     ]
   }
 }

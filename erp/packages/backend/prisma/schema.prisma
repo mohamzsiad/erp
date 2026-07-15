@@ -1652,13 +1652,15 @@ model TaxCode {
 }
 
 model CustomerCategory {
-  id        String  @id @default(cuid())
-  companyId String
-  code      String  @db.VarChar(20)
-  name      String  @db.VarChar(100)
-  isActive  Boolean @default(true)
+  id          String  @id @default(cuid())
+  companyId   String
+  code        String  @db.VarChar(20)
+  name        String  @db.VarChar(100)
+  priceListId String?
+  isActive    Boolean @default(true)
 
   customers Customer[]
+  priceList PriceList? @relation(fields: [priceListId], references: [id])
 
   @@unique([companyId, code])
   @@map("customer_categories")
@@ -1707,8 +1709,9 @@ model PriceList {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  items     PriceListItem[]
-  customers Customer[]
+  items      PriceListItem[]
+  customers  Customer[]
+  categories CustomerCategory[]
 
   @@map("price_lists")
 }

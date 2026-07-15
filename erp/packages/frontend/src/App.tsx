@@ -20,6 +20,9 @@ const InventoryRouter = lazy(() => import('./pages/inventory/InventoryRouter'));
 // ── Finance ───────────────────────────────────────────────────────────────────
 const FinanceRouter = lazy(() => import('./pages/finance/FinanceRouter'));
 
+// ── Sales ─────────────────────────────────────────────────────────────────────
+const SalesRouter = lazy(() => import('./pages/sales/SalesRouter'));
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 const AdminRouter = lazy(() => import('./pages/admin/AdminRouter'));
 
@@ -78,6 +81,16 @@ export default function App() {
             element={
               <ProtectedRoute requireModule="FINANCE">
                 <FinanceRouter />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Sales */}
+          <Route
+            path="/sales/*"
+            element={
+              <ProtectedRoute requireModule="SALES">
+                <SalesRouter />
               </ProtectedRoute>
             }
           />
