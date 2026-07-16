@@ -242,6 +242,11 @@ const NAV_TREE: NavItem[] = [
         children: [
           { id: 'enquiry-list', label: 'Sales Enquiries', path: '/sales/enquiries', icon: <Search size={13} /> },
           { id: 'quotation-list', label: 'Quotations', path: '/sales/quotations', icon: <FileText size={13} /> },
+          { id: 'order-list', label: 'Sales Orders', path: '/sales/orders', icon: <ShoppingCart size={13} /> },
+          { id: 'delivery-list', label: 'Deliveries', path: '/sales/deliveries', icon: <Truck size={13} /> },
+          { id: 'invoice-list', label: 'Sales Invoices', path: '/sales/invoices', icon: <Receipt size={13} /> },
+          { id: 'return-list', label: 'Sales Returns', path: '/sales/returns', icon: <ArrowRightLeft size={13} /> },
+          { id: 'creditnote-list', label: 'Credit Notes', path: '/sales/credit-notes', icon: <FileText size={13} /> },
         ],
       },
     ],

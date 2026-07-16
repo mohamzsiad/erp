@@ -23,7 +23,8 @@
       "PowerShell(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object {$_.OwningProcess -in 5444,10204,10836,12452,14664,19732} | Select-Object LocalPort,OwningProcess | Sort-Object LocalPort)",
       "PowerShell(Get-CimInstance Win32_Process -Filter \"ProcessId=10204 or ProcessId=10836 or ProcessId=12452 or ProcessId=14664 or ProcessId=19732\")",
       "PowerShell(Stop-Process -Id 19732,12452 -Force -ErrorAction SilentlyContinue)",
-      "PowerShell(Get-Process -Id 19732,12452 -ErrorAction SilentlyContinue)"
+      "PowerShell(Get-Process -Id 19732,12452 -ErrorAction SilentlyContinue)",
+      "Bash(docker compose *)"
     ]
   }
 }

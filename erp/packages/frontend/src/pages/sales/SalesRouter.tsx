@@ -10,6 +10,16 @@ const EnquiriesListPage = lazy(() => import('./enquiries/EnquiriesListPage'));
 const EnquiryFormPage = lazy(() => import('./enquiries/EnquiryFormPage'));
 const QuotationsListPage = lazy(() => import('./quotations/QuotationsListPage'));
 const QuotationFormPage = lazy(() => import('./quotations/QuotationFormPage'));
+const OrdersListPage = lazy(() => import('./orders/OrdersListPage'));
+const OrderFormPage = lazy(() => import('./orders/OrderFormPage'));
+const DeliveriesListPage = lazy(() => import('./deliveries/DeliveriesListPage'));
+const DeliveryFormPage = lazy(() => import('./deliveries/DeliveryFormPage'));
+const InvoicesListPage = lazy(() => import('./invoices/InvoicesListPage'));
+const InvoiceFormPage = lazy(() => import('./invoices/InvoiceFormPage'));
+const ReturnsListPage = lazy(() => import('./returns/ReturnsListPage'));
+const ReturnFormPage = lazy(() => import('./returns/ReturnFormPage'));
+const CreditNotesListPage = lazy(() => import('./creditNotes/CreditNotesListPage'));
+const CreditNoteFormPage = lazy(() => import('./creditNotes/CreditNoteFormPage'));
 
 const Spinner = () => (
   <div className="flex items-center justify-center h-48">
@@ -42,6 +52,29 @@ export default function SalesRouter() {
         <Route path="quotations" element={<QuotationsListPage />} />
         <Route path="quotations/new" element={<QuotationFormPage />} />
         <Route path="quotations/:id" element={<QuotationFormPage />} />
+
+        {/* Orders */}
+        <Route path="orders" element={<OrdersListPage />} />
+        <Route path="orders/new" element={<OrderFormPage />} />
+        <Route path="orders/:id" element={<OrderFormPage />} />
+
+        {/* Deliveries */}
+        <Route path="deliveries" element={<DeliveriesListPage />} />
+        <Route path="deliveries/new" element={<DeliveryFormPage />} />
+        <Route path="deliveries/:id" element={<DeliveryFormPage />} />
+
+        {/* Invoices */}
+        <Route path="invoices" element={<InvoicesListPage />} />
+        <Route path="invoices/new" element={<InvoiceFormPage />} />
+        <Route path="invoices/:id" element={<InvoiceFormPage />} />
+
+        {/* Returns & Credit Notes */}
+        <Route path="returns" element={<ReturnsListPage />} />
+        <Route path="returns/new" element={<ReturnFormPage />} />
+        <Route path="returns/:id" element={<ReturnFormPage />} />
+        <Route path="credit-notes" element={<CreditNotesListPage />} />
+        <Route path="credit-notes/new" element={<CreditNoteFormPage />} />
+        <Route path="credit-notes/:id" element={<CreditNoteFormPage />} />
       </Routes>
     </Suspense>
   );

@@ -1,0 +1,48 @@
+import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, RefreshCw } from 'lucide-react';
+import DataGrid, { type ColDef } from '../../../components/ui/DataGrid';
+import { StatusBadge } from '../../../components/ui/StatusBadge';
+import { useOrders, type OrderRow } from '../../../api/salesDocs';
+import { format } from 'date-fns';
+
+const COLUMNS: ColDef<OrderRow>[] = [
+  { field: 'docNo', headerName: 'Doc No', width: 150, pinned: 'left' },
+  { field: 'customerName', headerName: 'Customer', flex: 2, minWidth: 200 },
+  { field: 'orderType', headerName: 'Type', width: 100 },
+  { field: 'orderDate', headerName: 'Date', width: 120, valueFormatter: (p) => (p.value ? format(new Date(p.value as string), 'dd/MM/yyyy') : '') },
+  { field: 'totalAmount', headerName: 'Total', width: 130, type: 'numericColumn', valueFormatter: (p) => (p.value != null ? Number(p.value).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '') },
+  {
+    field: 'creditHoldReason', headerName: 'Credit', width: 90,
+    cellRenderer: (p: { value: string | null }) => (p.value ? <StatusBadge status="HOLD" /> : <span className="text-gray-300">—</span>),
+  },
+  { field: 'status', headerName: 'Status', width: 150, cellRenderer: (p: { value: string }) => <StatusBadge status={p.value} /> },
+];
+
+export default function OrdersListPage() {
+  const navigate = useNavigate();
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('');
+  const { data, isLoading, refetch } = useOrders({ search: search || undefined, status: status || undefined });
+  const onRow = useCallback((r: OrderRow) => navigate(`/sales/orders/${r.id}`), [navigate]);
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-3 px-4 py-2 bg-white border-b border-gray-200">
+        <h2 className="text-sm font-semibold text-gray-800">Sales Orders</h2>
+        <span className="text-xs text-gray-400">({data?.total ?? 0})</span>
+        <div className="flex-1" />
+        <input className="erp-input w-52" placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <select className="erp-input w-40" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="">All Status</option>
+          {['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'CREDIT_HOLD', 'IN_PROGRESS', 'DELIVERED', 'CLOSED', 'CANCELLED'].map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <button onClick={() => refetch()} className="toolbar-btn"><RefreshCw size={13} /></button>
+        <button onClick={() => navigate('/sales/orders/new')} className="toolbar-btn bg-[#1F4E79] text-white border-[#1F4E79] hover:bg-[#163D5F]"><Plus size={13} /><span>New Order</span></button>
+      </div>
+      <div className="flex-1 p-4">
+        <DataGrid<OrderRow> rowData={data?.data ?? []} columnDefs={COLUMNS} height="100%" loading={isLoading} pagination pageSize={50} onRowDoubleClicked={onRow} getRowId={(r) => r.id} />
+      </div>
+    </div>
+  );
+}

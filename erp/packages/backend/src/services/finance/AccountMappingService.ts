@@ -7,7 +7,11 @@ export type MappingType =
   | 'GRN_CLEARING'
   | 'BANK_ACCOUNT'
   | 'AP_EXPENSE'
-  | 'AR_REVENUE';
+  | 'AR_REVENUE'
+  | 'SALES_REVENUE'
+  | 'VAT_OUTPUT'
+  | 'COGS'
+  | 'CONTRACT_REVENUE';
 
 export class AccountMappingService {
   constructor(private prisma: PrismaClient) {}
