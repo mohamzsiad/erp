@@ -208,6 +208,9 @@ model Company {
   customers           Customer[]
   periodCloses        PeriodClose[]
   accountMappings     AccountMapping[]
+  salesmen            Salesman[]
+  paymentTerms        PaymentTerm[]
+  customerCompanies   CustomerCompany[]
 
   @@map("companies")
 }
@@ -306,6 +309,8 @@ model Location {
   poShipTo             PurchaseOrder[]       @relation("PoShipToLocation")
   grnHeaders           GrnHeader[]
   prDeliverySchedules  PrDeliverySchedule[]
+  salesmen             Salesman[]
+  salesOrders          SalesOrder[]          @relation("SalesOrderLocation")
 
   @@unique([companyId, code])
   @@map("locations")
@@ -324,6 +329,10 @@ model Currency {
   purchaseOrders PurchaseOrder[]
   purchaseQuotations PurchaseQuotation[]
   glAccounts    GlAccount[]
+  customers     Customer[]
+  customerCurrencies CustomerCurrency[]
+  priceLists    PriceList[]
+  salesOrders   SalesOrder[]
 
   @@unique([companyId, code])
   @@map("currencies")
@@ -833,6 +842,8 @@ model Item {
   minStock         Decimal      @default(0) @db.Decimal(18, 3)
   maxStock         Decimal      @default(0) @db.Decimal(18, 3)
   standardCost     Decimal      @default(0) @db.Decimal(18, 3)
+  // Only items flagged here can have stock reserved on a sales order line.
+  reservationAllowed Boolean    @default(false)
   trackingType     TrackingType @default(NONE)
   status           ItemStatus   @default(ACTIVE)
   createdAt        DateTime     @default(now())
@@ -926,6 +937,7 @@ model Warehouse {
   stockTransfersTo   StockTransfer[]    @relation("TransferTo")
   stockAdjustments  StockAdjustment[]
   purchaseOrders    PurchaseOrder[]
+  salesOrderLineReservations SalesOrderLine[] @relation("SalesOrderLineReserve")
 
   @@unique([companyId, code])
   @@map("warehouses")
@@ -1307,13 +1319,17 @@ model Customer {
   trn              String?      @db.VarChar(50)
   defaultTaxCodeId String?
   isTaxExempt      Boolean      @default(false)
-  paymentTerms     String?      @db.VarChar(100)
+  paymentTerms     String?      @db.VarChar(100)   // legacy free-text label, kept in sync with paymentTerm.name
+  paymentTermId    String?
+  currencyId       String?
   creditLimit      Decimal      @default(0) @db.Decimal(18, 3)
   creditHold       Boolean      @default(false)
   priceListId      String?
-  salespersonId    String?
+  salespersonId    String?                          // deprecated: free-text user id (enquiry/quotation legacy)
+  salesmanId       String?
   categoryId       String?
   notes            String?      @db.Text
+  isBlackListed    Boolean      @default(false)
   isActive         Boolean      @default(true)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
@@ -1322,6 +1338,12 @@ model Customer {
   category       CustomerCategory? @relation(fields: [categoryId], references: [id])
   defaultTaxCode TaxCode?          @relation(fields: [defaultTaxCodeId], references: [id])
   priceList      PriceList?        @relation(fields: [priceListId], references: [id])
+  paymentTerm    PaymentTerm?      @relation(fields: [paymentTermId], references: [id])
+  currency       Currency?         @relation(fields: [currencyId], references: [id])
+  salesman       Salesman?         @relation(fields: [salesmanId], references: [id])
+  companyTerms   CustomerCompany[]
+  currencies     CustomerCurrency[]
+  ownPriceLists  PriceList[]       @relation("CustomerSpecificPriceList")
   contacts       CustomerContact[]
   addresses      CustomerAddress[]
   arInvoices     ArInvoice[]
@@ -1554,6 +1576,79 @@ enum AddressType {
   SHIP_TO
 }
 
+// Reference data shared by every company: drives the city dropdown on an
+// address and the VAT-registration length check for that country.
+model Country {
+  id            String  @id @default(cuid())
+  code          String  @unique @db.VarChar(3)   // ISO alpha-2/3
+  name          String  @db.VarChar(100)
+  vatPrefix     String? @db.VarChar(5)           // e.g. "OM" on OM1100000000
+  vatLength     Int?                             // mandated total length, null = unchecked
+  vatFormatHint String? @db.VarChar(120)
+  isActive      Boolean @default(true)
+
+  cities    City[]
+  addresses CustomerAddress[]
+
+  @@map("countries")
+}
+
+model City {
+  id        String  @id @default(cuid())
+  countryId String
+  code      String  @db.VarChar(20)
+  name      String  @db.VarChar(100)
+  isActive  Boolean @default(true)
+
+  country   Country           @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  addresses CustomerAddress[]
+
+  @@unique([countryId, code])
+  @@index([countryId])
+  @@map("cities")
+}
+
+// Currencies a customer may transact in (multi-currency), one flagged default.
+model CustomerCurrency {
+  id         String  @id @default(cuid())
+  customerId String
+  currencyId String
+  isDefault  Boolean @default(false)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  currency Currency @relation(fields: [currencyId], references: [id])
+
+  @@unique([customerId, currencyId])
+  @@index([customerId])
+  @@map("customer_currencies")
+}
+
+enum PriceListType {
+  STANDARD           // attached to a group of customers / customer categories (1 → many)
+  CUSTOMER_SPECIFIC  // attached to exactly one customer (1 → 1)
+}
+
+enum SalesmanType {
+  SALESMAN
+  SUPERVISOR
+  VAN_SALESMAN
+  MANAGER
+}
+
+enum PaymentMode {
+  NORMAL
+  ADVANCE
+  CASH_ON_DELIVERY
+  CREDIT
+}
+
+enum DueDateBasis {
+  DOCUMENT_DATE
+  DELIVERY_DATE
+  MONTH_END
+  INVOICE_DATE
+}
+
 enum SalesEnquiryStatus {
   OPEN
   QUOTED
@@ -1651,6 +1746,106 @@ model TaxCode {
   @@map("tax_codes")
 }
 
+model Salesman {
+  id                String       @id @default(cuid())
+  companyId         String
+  code              String       @db.VarChar(20)
+  name              String       @db.VarChar(200)
+  shortName         String?      @db.VarChar(150)
+  type              SalesmanType @default(SALESMAN)
+  minMarkupPct      Decimal      @default(0) @db.Decimal(9, 3)
+  maxVariancePct    Decimal      @default(0) @db.Decimal(9, 3)
+  locationId        String?                              // Sales & delivery location (van salesmen)
+  contactNumber     String?      @db.VarChar(50)
+  email             String?      @db.VarChar(150)
+  userId            String?                              // optional link to a login user
+  isActive          Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  company         Company           @relation(fields: [companyId], references: [id])
+  location        Location?         @relation(fields: [locationId], references: [id])
+  customers       Customer[]
+  customerTerms   CustomerCompany[]
+  salesOrders     SalesOrder[]
+
+  @@unique([companyId, code])
+  @@index([companyId, isActive])
+  @@map("salesmen")
+}
+
+model PaymentTerm {
+  id                  String       @id @default(cuid())
+  companyId           String
+  code                String       @db.VarChar(20)
+  name                String       @db.VarChar(150)
+  shortName           String?      @db.VarChar(100)
+  paymentMode         PaymentMode  @default(NORMAL)
+  dueDateBasis        DueDateBasis @default(DOCUMENT_DATE)
+  dueDateAfterAdvance Boolean      @default(false)
+  creditDays          Int          @default(0)   // headline credit days (sum of the schedule when staged)
+  isActive            Boolean      @default(true)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  company       Company           @relation(fields: [companyId], references: [id])
+  lines         PaymentTermLine[]
+  customers     Customer[]
+  customerTerms CustomerCompany[]
+  salesOrders   SalesOrder[]
+
+  @@unique([companyId, code])
+  @@map("payment_terms")
+}
+
+// One instalment of a payment term (Payment % / Add Months / Credit Days).
+model PaymentTermLine {
+  id               String   @id @default(cuid())
+  paymentTermId    String
+  lineNo           Int
+  paymentPct       Decimal  @db.Decimal(9, 4)
+  addMonths        Int      @default(0)
+  creditDays       Int      @default(0)
+  cashDiscountDays Int?
+  cashDiscountPct  Decimal? @db.Decimal(9, 4)
+  isActive         Boolean  @default(true)
+
+  paymentTerm PaymentTerm @relation(fields: [paymentTermId], references: [id], onDelete: Cascade)
+
+  @@index([paymentTermId])
+  @@map("payment_term_lines")
+}
+
+// Company-wise commercial terms for a customer of a group. A customer may buy
+// from any company in the group; each company carries its own credit limit,
+// payment terms, price list and salesman.
+model CustomerCompany {
+  id                  String   @id @default(cuid())
+  customerId          String
+  companyId           String
+  salesmanId          String?
+  priceListId         String?
+  paymentTermId       String?
+  creditLimit         Decimal  @default(0) @db.Decimal(18, 3)
+  creditExposureLimit Decimal  @default(0) @db.Decimal(18, 3)
+  closeToExpiryDays   Int?
+  isBlackListed       Boolean  @default(false)
+  isGreyListed        Boolean  @default(false)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  company     Company      @relation(fields: [companyId], references: [id])
+  salesman    Salesman?    @relation(fields: [salesmanId], references: [id])
+  priceList   PriceList?   @relation(fields: [priceListId], references: [id])
+  paymentTerm PaymentTerm? @relation(fields: [paymentTermId], references: [id])
+
+  @@unique([customerId, companyId])
+  @@index([companyId])
+  @@map("customer_companies")
+}
+
 model CustomerCategory {
   id          String  @id @default(cuid())
   companyId   String
@@ -1682,37 +1877,68 @@ model CustomerContact {
 }
 
 model CustomerAddress {
-  id         String      @id @default(cuid())
-  customerId String
-  type       AddressType
-  line1      String      @db.VarChar(200)
-  line2      String?     @db.VarChar(200)
-  city       String?     @db.VarChar(100)
-  country    String?     @db.VarChar(100)
-  isDefault  Boolean     @default(false)
+  id            String      @id @default(cuid())
+  customerId    String
+  type          AddressType
+  name          String?     @db.VarChar(200)   // address label / description
+  line1         String      @db.VarChar(200)
+  line2         String?     @db.VarChar(200)
+  line3         String?     @db.VarChar(200)
+  line4         String?     @db.VarChar(200)
+  line5         String?     @db.VarChar(200)
+  // Country and city come from the reference masters; the text columns are kept
+  // as the printed values (and for addresses captured before the masters existed).
+  countryId     String?
+  country       String?     @db.VarChar(100)
+  cityId        String?
+  city          String?     @db.VarChar(100)
+  postalCode    String?     @db.VarChar(20)
+  street        String?     @db.VarChar(200)
+  // Contact details — held per address (no separate Contacts tab)
+  contactPerson String?     @db.VarChar(150)
+  email         String?     @db.VarChar(150)
+  phone         String?     @db.VarChar(50)
+  mobile        String?     @db.VarChar(50)
+  fax           String?     @db.VarChar(50)
+  // Statutory registration numbers
+  vatNo         String?     @db.VarChar(50)
+  crNo          String?     @db.VarChar(50)
+  taxCardNo     String?     @db.VarChar(50)
+  isDefault     Boolean     @default(false)
 
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  countryMaster Country? @relation(fields: [countryId], references: [id])
+  cityMaster    City?    @relation(fields: [cityId], references: [id])
 
   @@index([customerId])
   @@map("customer_addresses")
 }
 
 model PriceList {
-  id         String    @id @default(cuid())
-  companyId  String
-  name       String    @db.VarChar(150)
-  currencyId String?                                 // base currency in this release (soft link)
-  validFrom  DateTime? @db.Date
-  validTo    DateTime? @db.Date
-  isActive   Boolean   @default(true)
-  isDefault  Boolean   @default(false)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id           String        @id @default(cuid())
+  companyId    String
+  code         String        @db.VarChar(20)
+  name         String        @db.VarChar(150)
+  type         PriceListType @default(STANDARD)
+  ownerCustomerId String?                             // set only for CUSTOMER_SPECIFIC (1-to-1)
+  currencyId   String?
+  validFrom    DateTime?     @db.Date
+  validTo      DateTime?     @db.Date
+  isActive     Boolean       @default(true)
+  isDefault    Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
-  items      PriceListItem[]
-  customers  Customer[]
-  categories CustomerCategory[]
+  currency      Currency?         @relation(fields: [currencyId], references: [id])
+  ownerCustomer Customer?         @relation("CustomerSpecificPriceList", fields: [ownerCustomerId], references: [id])
+  items         PriceListItem[]
+  customers     Customer[]
+  categories    CustomerCategory[]
+  customerTerms CustomerCompany[]
 
+  @@unique([ownerCustomerId])
+  @@unique([companyId, code])
+  @@index([companyId, type])
   @@map("price_lists")
 }
 
@@ -1844,8 +2070,13 @@ model SalesOrder {
   requestedDate    DateTime?        @db.Date
   billToAddressId  String?
   shipToAddressId  String?
-  salespersonId    String?
-  paymentTerms     String?          @db.VarChar(100)
+  salespersonId    String?                            // deprecated: free-text user id
+  salesmanId       String?
+  paymentTerms     String?          @db.VarChar(100)  // label spooled from the customer's payment term
+  paymentTermId    String?
+  currencyId       String?
+  exchangeRate     Decimal          @default(1) @db.Decimal(18, 6)
+  locationId       String?                            // location the order is raised from
   warehouseId      String?
   notes            String?          @db.Text
   status           SalesOrderStatus @default(DRAFT)
@@ -1862,6 +2093,10 @@ model SalesOrder {
   customer      Customer         @relation(fields: [customerId], references: [id])
   quotation     SalesQuotation?  @relation(fields: [quotationId], references: [id])
   contract      SalesContract?   @relation(fields: [contractId], references: [id])
+  salesman      Salesman?        @relation(fields: [salesmanId], references: [id])
+  paymentTerm   PaymentTerm?     @relation(fields: [paymentTermId], references: [id])
+  currency      Currency?        @relation(fields: [currencyId], references: [id])
+  location      Location?        @relation("SalesOrderLocation", fields: [locationId], references: [id])
   lines         SalesOrderLine[]
   deliveryNotes DeliveryNote[]
   salesInvoices SalesInvoice[]
@@ -1886,13 +2121,19 @@ model SalesOrderLine {
   taxCodeId     String?
   netAmount     Decimal   @db.Decimal(18, 3)
   requestedDate DateTime? @db.Date
+  // Stock reservation — blocks warehouse stock for this line (e.g. against an
+  // advance payment), optionally from a warehouse other than the order's.
+  reservedQty        Decimal   @default(0) @db.Decimal(18, 3)
+  reserveWarehouseId String?
+  reserveUntil       DateTime? @db.Date
   lineNo        Int
 
-  order         SalesOrder         @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  item          Item               @relation(fields: [itemId], references: [id])
-  uom           Uom                @relation(fields: [uomId], references: [id])
-  taxCode       TaxCode?           @relation(fields: [taxCodeId], references: [id])
-  deliveryLines DeliveryNoteLine[]
+  order              SalesOrder         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  item               Item               @relation(fields: [itemId], references: [id])
+  uom                Uom                @relation(fields: [uomId], references: [id])
+  taxCode            TaxCode?           @relation(fields: [taxCodeId], references: [id])
+  reserveWarehouse   Warehouse?         @relation("SalesOrderLineReserve", fields: [reserveWarehouseId], references: [id])
+  deliveryLines      DeliveryNoteLine[]
 
   @@index([orderId])
   @@map("sales_order_lines")
@@ -2130,6 +2371,7 @@ model BoqLine {
   itemDescription String  @db.VarChar(500)
   uomId           String?
   contractQty     Decimal @db.Decimal(18, 3)
+  originalQty     Decimal? @db.Decimal(18, 3)   // first-agreed qty; set when a variation adjusts contractQty
   rate            Decimal @db.Decimal(18, 3)
   contractAmount  Decimal @db.Decimal(18, 3)
   lineNo          Int

@@ -39,6 +39,7 @@ import '../auth/auth_state.dart';
 import '../widgets/bottom_nav.dart';
 import 'route_names.dart';
 import '../../features/auth/ui/screens/login_screen.dart';
+import '../../features/sales/ui/screens/sales_screens.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authNotifier = ref.watch(authProvider.notifier);
@@ -269,6 +270,28 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/finance/budgets',
             name: RouteNames.budgets,
             builder: (_, __) => const BudgetScreen(),
+          ),
+
+          // Sales
+          GoRoute(
+            path: '/sales/customers',
+            name: RouteNames.salesCustomerList,
+            builder: (_, __) => const SalesCustomersScreen(),
+          ),
+          GoRoute(
+            path: '/sales/quotations',
+            name: RouteNames.salesQuotationList,
+            builder: (_, __) => const SalesQuotationsScreen(),
+          ),
+          GoRoute(
+            path: '/sales/orders',
+            name: RouteNames.salesOrderList,
+            builder: (_, __) => const SalesOrdersScreen(),
+          ),
+          GoRoute(
+            path: '/sales/invoices',
+            name: RouteNames.salesInvoiceList,
+            builder: (_, __) => const SalesInvoicesScreen(),
           ),
         ],
       ),

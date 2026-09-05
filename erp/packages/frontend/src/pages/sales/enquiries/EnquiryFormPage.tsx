@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { masterLabel } from '@clouderp/shared';
 import { ArrowLeft, Save, Plus, Trash2, FileUp, Loader2 } from 'lucide-react';
 import { useEnquiry, useCreateEnquiry, useUpdateEnquiry, enquiryApi, type UpsertEnquiryInput } from '../../../api/salesDocs';
 import { useCustomerList } from '../../../api/sales';
@@ -102,7 +103,7 @@ export default function EnquiryFormPage() {
           <div><label className="block text-xs text-gray-600 mb-1">Customer</label>
             <select className="erp-input w-full" value={customerId} onChange={(e) => setCustomerId(e.target.value)} disabled={readOnly}>
               <option value="">— prospect —</option>
-              {(customers?.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+              {(customers?.data ?? []).map((c) => <option key={c.id} value={c.id}>{masterLabel(c.code, c.name)}</option>)}
             </select>
           </div>
           <div><label className="block text-xs text-gray-600 mb-1">Prospect Name</label><input className="erp-input w-full" value={prospectName} onChange={(e) => setProspectName(e.target.value)} disabled={readOnly || !!customerId} /></div>
@@ -129,7 +130,7 @@ export default function EnquiryFormPage() {
                     <td className="px-2 py-1">
                       <select className="erp-input w-56" value={row.itemId} onChange={(e) => { const it = itemOptions.find((o) => o.id === e.target.value); upd(i, { itemId: e.target.value, itemLabel: it ? `${it.code} — ${it.description}` : '' }); }} disabled={readOnly}>
                         <option value="">Select…</option>
-                        {itemOptions.map((o) => <option key={o.id} value={o.id}>{o.code} — {o.description}</option>)}
+                        {itemOptions.map((o) => <option key={o.id} value={o.id}>{masterLabel(o.code, o.description)}</option>)}
                       </select>
                     </td>
                     <td className="px-2 py-1"><select className="erp-input w-20" value={row.uomId} onChange={(e) => upd(i, { uomId: e.target.value })} disabled={readOnly}><option value="">—</option>{uomOptions.map((o) => <option key={o.id} value={o.id}>{o.code}</option>)}</select></td>

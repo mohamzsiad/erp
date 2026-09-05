@@ -155,6 +155,7 @@ export default async function itemRoutes(fastify: FastifyInstance) {
           leadTimeDays:   { type: 'integer', minimum: 0, default: 0 },
           minOrderQty:    { type: 'number', minimum: 0, default: 1 },
           standardCost:   { type: 'number', minimum: 0, default: 0 },
+          reservationAllowed: { type: 'boolean', default: false },
           safetyStock:    { type: 'number', minimum: 0, default: 0 },
           isSerialized:   { type: 'boolean', default: false },
           isBatchTracked: { type: 'boolean', default: false },

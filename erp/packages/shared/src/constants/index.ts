@@ -1,5 +1,6 @@
 export * from './modules.js';
 export * from './permissions.js';
+export * from './masters.js';
 
 export const PAGINATION_DEFAULTS = {
   PAGE: 1,

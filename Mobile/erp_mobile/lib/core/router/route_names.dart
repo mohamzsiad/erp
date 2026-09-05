@@ -56,4 +56,10 @@ class RouteNames {
   static const String journalEntryDetail = journalDetail;
 
   static const String budgets = 'budgets';
+
+  // Sales
+  static const String salesCustomerList  = 'sales-customer-list';
+  static const String salesQuotationList = 'sales-quotation-list';
+  static const String salesOrderList     = 'sales-order-list';
+  static const String salesInvoiceList   = 'sales-invoice-list';
 }

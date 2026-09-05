@@ -143,16 +143,59 @@ export interface UpsertOrderInput {
   orderType?: 'STOCK' | 'SERVICE' | 'PROJECT' | 'DIRECT';
   orderDate: string;
   requestedDate?: string | null;
+  salesmanId?: string | null;
   paymentTerms?: string | null;
+  paymentTermId?: string | null;
+  currencyId?: string | null;
+  exchangeRate?: number;
+  locationId?: string | null;
   warehouseId?: string | null;
   notes?: string | null;
-  lines: OrderLineInput[];
+  /** Omitted when saving the header on its own — lines are added afterwards. */
+  lines?: OrderLineInput[];
+}
+
+/** Commercial terms spooled off the customer master onto a new order. */
+export interface OrderCustomerDefaults {
+  paymentTermId: string | null;
+  paymentTerms: string | null;
+  currencyId: string | null;
+  currencyCode: string | null;
+  salesmanId: string | null;
+  priceListId: string | null;
+  billToAddressId: string | null;
+  shipToAddressId: string | null;
+  creditHold: boolean;
+  isBlackListed: boolean;
+  /** Currencies this customer may trade in; empty means no restriction. */
+  allowedCurrencyIds: string[];
+}
+
+export interface WarehouseStockRow {
+  warehouseId: string; warehouseCode: string; warehouseName: string;
+  onHand: number; reserved: number; available: number;
+}
+export interface ItemStockPosition {
+  itemId: string;
+  warehouseId: string | null;
+  warehouseOnHand: number;
+  warehouseReserved: number;
+  warehouseAvailable: number;
+  groupOnHand: number;
+  groupReserved: number;
+  groupAvailable: number;
+  byWarehouse: WarehouseStockRow[];
 }
 export interface OrderRow {
   id: string; docNo: string; customerId: string; customerName?: string; orderType: string;
   orderDate: string; status: string; totalAmount: number; creditHoldReason: string | null;
 }
-export interface AvailabilityLine { lineId: string; itemId: string; orderedQty: number; onHand: number; reserved: number; availableToPromise: number; }
+export interface AvailabilityLine {
+  lineId: string; itemId: string; orderedQty: number;
+  warehouseId: string | null; onHand: number; reserved: number; availableToPromise: number;
+  groupOnHand: number; groupAvailable: number;
+  reservedQty: number; reserveWarehouseId: string | null; reserveUntil: string | null;
+}
 export interface OrderAvailability { orderId: string; warehouseId: string | null; lines: AvailabilityLine[]; }
 export interface CreditCheck {
   decision: 'PASS' | 'HOLD' | 'BLOCK'; availableCredit: number; exceeded: boolean; hasOverdue: boolean; reason?: string;
@@ -163,6 +206,14 @@ export const orderApi = {
     api.get<{ data: OrderRow[]; total: number }>('/sales/orders', { params }).then((r) => r.data),
   getById: (id: string) => api.get<any>(`/sales/orders/${id}`).then((r) => r.data),
   availability: (id: string) => api.get<OrderAvailability>(`/sales/orders/${id}/availability`).then((r) => r.data),
+  customerDefaults: (customerId: string) =>
+    api.get<OrderCustomerDefaults>('/sales/orders/customer-defaults', { params: { customerId } }).then((r) => r.data),
+  itemStock: (itemId: string, warehouseId?: string | null) =>
+    api.get<ItemStockPosition>('/sales/orders/item-stock', { params: { itemId, warehouseId: warehouseId || undefined } }).then((r) => r.data),
+  reserveLine: (id: string, lineId: string, body: { qty: number; warehouseId?: string | null; reserveUntil?: string | null }) =>
+    api.post<any>(`/sales/orders/${id}/lines/${lineId}/reserve`, body).then((r) => r.data),
+  releaseLineReservation: (id: string, lineId: string) =>
+    api.post<any>(`/sales/orders/${id}/lines/${lineId}/release-reservation`).then((r) => r.data),
   create: (data: UpsertOrderInput) => api.post<any>('/sales/orders', data).then((r) => r.data),
   update: (id: string, data: UpsertOrderInput) => api.put<any>(`/sales/orders/${id}`, data).then((r) => r.data),
   confirm: (id: string) => api.post<any & { creditCheck?: CreditCheck; warnings?: string[] }>(`/sales/orders/${id}/confirm`).then((r) => r.data),

@@ -1,4 +1,5 @@
 import { PrismaClient, Prisma } from '@prisma/client';
+import { deriveShortName, validateVatNumber } from '@clouderp/shared';
 
 // Credit limit above which a new customer requires Credit Controller approval
 // before it becomes active. (Kept as a constant here; can be moved to
@@ -15,11 +16,43 @@ export interface UpsertContactInput {
 
 export interface UpsertAddressInput {
   type: 'BILL_TO' | 'SHIP_TO';
+  name?: string | null;
   line1: string;
   line2?: string | null;
-  city?: string | null;
+  line3?: string | null;
+  line4?: string | null;
+  line5?: string | null;
+  countryId?: string | null;
   country?: string | null;
+  cityId?: string | null;
+  city?: string | null;
+  postalCode?: string | null;
+  street?: string | null;
+  // Contact details live on the address (bill-to and ship-to each carry their own)
+  contactPerson?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  mobile?: string | null;
+  fax?: string | null;
+  // Statutory registration numbers
+  vatNo?: string | null;
+  crNo?: string | null;
+  taxCardNo?: string | null;
   isDefault?: boolean;
+}
+
+/** Company-wise commercial terms for a customer of a group company. */
+export interface UpsertCustomerCompanyInput {
+  companyId: string;
+  salesmanId?: string | null;
+  priceListId?: string | null;
+  paymentTermId?: string | null;
+  creditLimit?: number;
+  creditExposureLimit?: number;
+  closeToExpiryDays?: number | null;
+  isBlackListed?: boolean;
+  isGreyListed?: boolean;
+  isActive?: boolean;
 }
 
 export interface CreateCustomerInput {
@@ -32,14 +65,21 @@ export interface CreateCustomerInput {
   defaultTaxCodeId?: string | null;
   isTaxExempt?: boolean;
   paymentTerms?: string | null;
+  paymentTermId?: string | null;
+  currencyId?: string | null;
   creditLimit?: number;
   creditHold?: boolean;
+  isBlackListed?: boolean;
   priceListId?: string | null;
   salespersonId?: string | null;
+  salesmanId?: string | null;
   categoryId?: string | null;
   notes?: string | null;
   contacts?: UpsertContactInput[];
   addresses?: UpsertAddressInput[];
+  companyTerms?: UpsertCustomerCompanyInput[];
+  /** Currencies this customer may transact in; the first is the default. */
+  currencyIds?: string[];
 }
 
 export type UpdateCustomerInput = Partial<Omit<CreateCustomerInput, 'companyId'>> & {
@@ -93,13 +133,15 @@ export class CustomerService {
           name: true,
           tradeName: true,
           type: true,
-          trn: true,
           paymentTerms: true,
           creditLimit: true,
           creditHold: true,
+          isBlackListed: true,
           isActive: true,
           categoryId: true,
           category: { select: { name: true } },
+          salesmanId: true,
+          salesman: { select: { code: true, name: true } },
           createdAt: true,
         },
       }),
@@ -110,9 +152,19 @@ export class CustomerService {
       ...c,
       creditLimit: Number(c.creditLimit),
       categoryName: c.category?.name ?? null,
+      salesmanName: c.salesman ? `${c.salesman.code} — ${c.salesman.name}` : null,
     }));
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  /** Companies in the group — the selectable rows of the company-terms grid. */
+  async listGroupCompanies() {
+    return this.prisma.company.findMany({
+      where: { isActive: true },
+      select: { id: true, code: true, name: true, baseCurrency: true },
+      orderBy: { code: 'asc' },
+    });
   }
 
   // ── Quick search for lookup dropdowns ──────────────────────────────────────
@@ -132,18 +184,107 @@ export class CustomerService {
     });
   }
 
-  // ── Get by id (with contacts + addresses) ──────────────────────────────────
+  // ── Get by id (addresses carry their own contact details) ──────────────────
   async getById(id: string, companyId: string) {
     const customer = await this.prisma.customer.findFirst({
       where: { id, companyId },
       include: {
         contacts: { orderBy: { isPrimary: 'desc' } },
-        addresses: { orderBy: { isDefault: 'desc' } },
+        addresses: {
+          orderBy: [{ type: 'asc' }, { isDefault: 'desc' }],
+          include: {
+            countryMaster: { select: { code: true, name: true, vatPrefix: true, vatLength: true } },
+            cityMaster: { select: { code: true, name: true } },
+          },
+        },
         category: { select: { id: true, name: true } },
+        salesman: { select: { id: true, code: true, name: true } },
+        paymentTerm: { select: { id: true, code: true, name: true, creditDays: true } },
+        currency: { select: { id: true, code: true, name: true } },
+        currencies: { include: { currency: { select: { id: true, code: true, name: true } } } },
+        priceList: { select: { id: true, code: true, name: true, type: true } },
+        companyTerms: {
+          orderBy: { companyId: 'asc' },
+          include: {
+            company: { select: { code: true, name: true } },
+            salesman: { select: { code: true, name: true } },
+            priceList: { select: { name: true } },
+            paymentTerm: { select: { code: true, name: true } },
+          },
+        },
       },
     });
     if (!customer) throw notFound();
-    return { ...customer, creditLimit: Number(customer.creditLimit) };
+    return {
+      ...customer,
+      creditLimit: Number(customer.creditLimit),
+      salesmanName: customer.salesman ? `${customer.salesman.code} — ${customer.salesman.name}` : null,
+      paymentTermName: customer.paymentTerm?.name ?? customer.paymentTerms ?? null,
+      currencyCode: customer.currency?.code ?? null,
+      priceListLabel: customer.priceList ? `${customer.priceList.code} — ${customer.priceList.name}` : null,
+      currencyIds: customer.currencies.map((c) => c.currencyId),
+      allowedCurrencies: customer.currencies.map((c) => ({
+        currencyId: c.currencyId, code: c.currency.code, name: c.currency.name, isDefault: c.isDefault,
+      })),
+      companyTerms: customer.companyTerms.map((t) => ({
+        id: t.id,
+        companyId: t.companyId,
+        companyName: t.company ? `${t.company.code} — ${t.company.name}` : null,
+        salesmanId: t.salesmanId,
+        salesmanName: t.salesman ? `${t.salesman.code} — ${t.salesman.name}` : null,
+        priceListId: t.priceListId,
+        priceListName: t.priceList?.name ?? null,
+        paymentTermId: t.paymentTermId,
+        paymentTermName: t.paymentTerm?.name ?? null,
+        creditLimit: Number(t.creditLimit),
+        creditExposureLimit: Number(t.creditExposureLimit),
+        closeToExpiryDays: t.closeToExpiryDays,
+        isBlackListed: t.isBlackListed,
+        isGreyListed: t.isGreyListed,
+        isActive: t.isActive,
+      })),
+    };
+  }
+
+  /**
+   * Commercial terms that apply when this customer transacts with `companyId`:
+   * the company-terms row when one exists, otherwise the customer header.
+   * Used by sales documents to spool payment terms, currency, price list and
+   * salesman off the master.
+   */
+  async effectiveTerms(customerId: string, companyId: string) {
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId },
+      include: {
+        paymentTerm: { select: { id: true, name: true } },
+        companyTerms: {
+          where: { companyId },
+          include: { paymentTerm: { select: { id: true, name: true } } },
+        },
+      },
+    });
+    if (!customer) throw notFound();
+    const t = customer.companyTerms[0] ?? null;
+    return {
+      customerId,
+      companyId,
+      salesmanId: t?.salesmanId ?? customer.salesmanId ?? null,
+      priceListId: t?.priceListId ?? customer.priceListId ?? null,
+      paymentTermId: t?.paymentTermId ?? customer.paymentTermId ?? null,
+      paymentTerms: t?.paymentTerm?.name ?? customer.paymentTerm?.name ?? customer.paymentTerms ?? null,
+      currencyId: customer.currencyId ?? null,
+      // The credit limit is maintained per company on the Companies grid; the
+      // customer header value is only a fallback for rows created before that.
+      creditLimit: Number(t?.creditLimit ?? customer.creditLimit),
+      hasCompanyTerms: !!t,
+      creditExposureLimit: Number(t?.creditExposureLimit ?? 0),
+      creditHold: customer.creditHold,
+      isBlackListed: (t?.isBlackListed ?? false) || customer.isBlackListed,
+      isGreyListed: t?.isGreyListed ?? false,
+      isActive: customer.isActive && (t?.isActive ?? true),
+      defaultTaxCodeId: customer.defaultTaxCodeId,
+      isTaxExempt: customer.isTaxExempt,
+    };
   }
 
   // ── Duplicate detection (warn, not block) ──────────────────────────────────
@@ -182,16 +323,20 @@ export class CustomerService {
         companyId: input.companyId,
         code,
         name: input.name,
-        tradeName: input.tradeName ?? null,
+        tradeName: deriveShortName(input.tradeName || input.name),
         type: (input.type ?? 'COMPANY') as any,
         trn: input.trn ?? null,
         defaultTaxCodeId: input.defaultTaxCodeId ?? null,
         isTaxExempt: input.isTaxExempt ?? false,
         paymentTerms: input.paymentTerms ?? null,
+        paymentTermId: input.paymentTermId ?? null,
+        currencyId: input.currencyId ?? null,
         creditLimit,
         creditHold: input.creditHold ?? false,
+        isBlackListed: input.isBlackListed ?? false,
         priceListId: input.priceListId ?? null,
         salespersonId: input.salespersonId ?? null,
+        salesmanId: input.salesmanId ?? null,
         categoryId: input.categoryId ?? null,
         notes: input.notes ?? null,
         isActive: !needsCreditApproval,
@@ -202,13 +347,16 @@ export class CustomerService {
             })) } }
           : undefined,
         addresses: input.addresses?.length
-          ? { createMany: { data: input.addresses.map((a) => ({
-              type: a.type as any, line1: a.line1, line2: a.line2 ?? null,
-              city: a.city ?? null, country: a.country ?? null, isDefault: a.isDefault ?? false,
-            })) } }
+          ? { createMany: { data: input.addresses.map((a) => addressData(a)) } }
+          : undefined,
+        companyTerms: input.companyTerms?.length
+          ? { createMany: { data: input.companyTerms.map((t) => companyTermData(t)) } }
+          : undefined,
+        currencies: input.currencyIds?.length
+          ? { createMany: { data: input.currencyIds.map((cid, i) => ({ currencyId: cid, isDefault: i === 0 })) } }
           : undefined,
       },
-      include: { contacts: true, addresses: true },
+      include: { contacts: true, addresses: true, companyTerms: true },
     });
 
     await this.audit('CREATE', customer.id, userId, { code: customer.code, name: customer.name });
@@ -235,16 +383,22 @@ export class CustomerService {
       where: { id },
       data: {
         name: input.name,
-        tradeName: input.tradeName,
+        tradeName: input.tradeName !== undefined || input.name !== undefined
+          ? deriveShortName(input.tradeName || input.name || existing.name)
+          : undefined,
         type: input.type as any,
         trn: input.trn,
         defaultTaxCodeId: input.defaultTaxCodeId,
         isTaxExempt: input.isTaxExempt,
         paymentTerms: input.paymentTerms,
+        paymentTermId: input.paymentTermId,
+        currencyId: input.currencyId,
         creditLimit: input.creditLimit,
         creditHold: input.creditHold,
+        isBlackListed: input.isBlackListed,
         priceListId: input.priceListId,
         salespersonId: input.salespersonId,
+        salesmanId: input.salesmanId,
         categoryId: input.categoryId,
         notes: input.notes,
         isActive: input.isActive,
@@ -267,10 +421,23 @@ export class CustomerService {
       await this.prisma.customerAddress.deleteMany({ where: { customerId: id } });
       if (input.addresses.length) {
         await this.prisma.customerAddress.createMany({
-          data: input.addresses.map((a) => ({
-            customerId: id, type: a.type as any, line1: a.line1, line2: a.line2 ?? null,
-            city: a.city ?? null, country: a.country ?? null, isDefault: a.isDefault ?? false,
-          })),
+          data: input.addresses.map((a) => ({ customerId: id, ...addressData(a) })),
+        });
+      }
+    }
+    if (input.currencyIds !== undefined) {
+      await this.prisma.customerCurrency.deleteMany({ where: { customerId: id } });
+      if (input.currencyIds.length) {
+        await this.prisma.customerCurrency.createMany({
+          data: input.currencyIds.map((cid, i) => ({ customerId: id, currencyId: cid, isDefault: i === 0 })),
+        });
+      }
+    }
+    if (input.companyTerms !== undefined) {
+      await this.prisma.customerCompany.deleteMany({ where: { customerId: id } });
+      if (input.companyTerms.length) {
+        await this.prisma.customerCompany.createMany({
+          data: input.companyTerms.map((t) => ({ customerId: id, ...companyTermData(t) })),
         });
       }
     }
@@ -310,7 +477,7 @@ export class CustomerService {
   async financialSummary(id: string, companyId: string) {
     const customer = await this.prisma.customer.findFirst({
       where: { id, companyId },
-      select: { id: true, creditLimit: true },
+      select: { id: true, creditLimit: true, companyTerms: { where: { companyId }, select: { creditLimit: true } } },
     });
     if (!customer) throw notFound();
 
@@ -340,7 +507,7 @@ export class CustomerService {
     });
     const openOrderValue = openOrders.reduce((s, o) => s + Number(o.totalAmount), 0);
 
-    const creditLimit = Number(customer.creditLimit);
+    const creditLimit = Number(customer.companyTerms[0]?.creditLimit ?? customer.creditLimit);
     const availableCredit = creditLimit - (outstandingBalance + openOrderValue);
 
     return {
@@ -366,6 +533,67 @@ export class CustomerService {
     if (input.categoryId) {
       const cat = await this.prisma.customerCategory.findFirst({ where: { id: input.categoryId, companyId } });
       if (!cat) throw Object.assign(new Error('Customer category not found'), { statusCode: 422 });
+    }
+    if (input.paymentTermId) {
+      const pt = await this.prisma.paymentTerm.findFirst({ where: { id: input.paymentTermId, companyId } });
+      if (!pt) throw Object.assign(new Error('Payment term not found'), { statusCode: 422 });
+    }
+    if (input.currencyId) {
+      const cur = await this.prisma.currency.findFirst({ where: { id: input.currencyId, companyId } });
+      if (!cur) throw Object.assign(new Error('Currency not found'), { statusCode: 422 });
+    }
+    if (input.salesmanId) {
+      const sm = await this.prisma.salesman.findFirst({ where: { id: input.salesmanId, companyId } });
+      if (!sm) throw Object.assign(new Error('Salesman not found'), { statusCode: 422 });
+    }
+    if (input.currencyIds?.length) {
+      const found = await this.prisma.currency.count({ where: { id: { in: input.currencyIds }, companyId } });
+      if (found !== new Set(input.currencyIds).size) {
+        throw Object.assign(new Error('One or more currencies not found'), { statusCode: 422 });
+      }
+    }
+    if (input.addresses?.length) await this.validateAddresses(input.addresses);
+    if (input.companyTerms?.length) {
+      const seen = new Set<string>();
+      for (const t of input.companyTerms) {
+        if (seen.has(t.companyId)) {
+          throw Object.assign(new Error('A customer can have only one terms row per company'), { statusCode: 422 });
+        }
+        seen.add(t.companyId);
+        const co = await this.prisma.company.findFirst({ where: { id: t.companyId }, select: { id: true } });
+        if (!co) throw Object.assign(new Error('Company not found'), { statusCode: 422 });
+      }
+    }
+  }
+
+  /**
+   * Cities must belong to the address's country and the VAT registration number
+   * must satisfy that country's rule. The printed country/city text is filled in
+   * from the masters here, so a caller only ever has to send the ids.
+   */
+  private async validateAddresses(addresses: UpsertAddressInput[]) {
+    for (const a of addresses) {
+      if (!a.countryId) continue;
+      const country = await this.prisma.country.findUnique({
+        where: { id: a.countryId },
+        select: { id: true, name: true, vatPrefix: true, vatLength: true },
+      });
+      if (!country) throw Object.assign(new Error('Country not found'), { statusCode: 422 });
+      a.country = country.name;
+
+      if (a.cityId) {
+        const city = await this.prisma.city.findFirst({
+          where: { id: a.cityId, countryId: a.countryId },
+          select: { id: true, name: true },
+        });
+        if (!city) throw Object.assign(new Error('City does not belong to the selected country'), { statusCode: 422 });
+        a.city = city.name;
+      }
+
+      const verdict = validateVatNumber(a.vatNo, country);
+      if (!verdict.ok) {
+        throw Object.assign(new Error(`${a.type === 'SHIP_TO' ? 'Ship to' : 'Bill to'} address: ${verdict.message}`), { statusCode: 422 });
+      }
     }
   }
 
@@ -414,4 +642,46 @@ export class CustomerService {
 
 function round(n: number) {
   return Math.round(n * 1000) / 1000;
+}
+
+function addressData(a: UpsertAddressInput) {
+  return {
+    type: a.type as any,
+    name: a.name ?? null,
+    line1: a.line1,
+    line2: a.line2 ?? null,
+    line3: a.line3 ?? null,
+    line4: a.line4 ?? null,
+    line5: a.line5 ?? null,
+    countryId: a.countryId ?? null,
+    country: a.country ?? null,
+    cityId: a.cityId ?? null,
+    city: a.city ?? null,
+    postalCode: a.postalCode ?? null,
+    street: a.street ?? null,
+    contactPerson: a.contactPerson ?? null,
+    email: a.email ?? null,
+    phone: a.phone ?? null,
+    mobile: a.mobile ?? null,
+    fax: a.fax ?? null,
+    vatNo: a.vatNo ?? null,
+    crNo: a.crNo ?? null,
+    taxCardNo: a.taxCardNo ?? null,
+    isDefault: a.isDefault ?? false,
+  };
+}
+
+function companyTermData(t: UpsertCustomerCompanyInput) {
+  return {
+    companyId: t.companyId,
+    salesmanId: t.salesmanId ?? null,
+    priceListId: t.priceListId ?? null,
+    paymentTermId: t.paymentTermId ?? null,
+    creditLimit: new Prisma.Decimal(t.creditLimit ?? 0),
+    creditExposureLimit: new Prisma.Decimal(t.creditExposureLimit ?? 0),
+    closeToExpiryDays: t.closeToExpiryDays ?? null,
+    isBlackListed: t.isBlackListed ?? false,
+    isGreyListed: t.isGreyListed ?? false,
+    isActive: t.isActive ?? true,
+  };
 }

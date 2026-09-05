@@ -19,8 +19,9 @@ export interface PriceResolution {
 
 /**
  * Resolves the selling price for an item/uom, applying the tiered order:
- *   customer-specific price list → customer-category price list → company
- *   default price list → MANUAL (no stored price).
+ *   customer-specific price list → the price list on the customer's company
+ *   terms → the customer's assigned standard list → customer-category price
+ *   list → company default price list → MANUAL (no stored price).
  * Validity dates on both the price list and the price-list item are respected.
  * Pure (no writes) so it can be called inside document transactions.
  */
@@ -31,22 +32,32 @@ export class PriceResolutionService {
     const { companyId, itemId, uomId, customerId } = args;
     const asOf = args.date ? new Date(args.date) : new Date();
 
-    let customerListId: string | null = null;
+    let ownListId: string | null = null;       // list owned by this customer (1-to-1)
+    let companyTermListId: string | null = null; // list on the customer's company-terms row
+    let customerListId: string | null = null;   // standard list assigned to the customer
     let categoryListId: string | null = null;
 
     if (customerId) {
       const customer = await this.prisma.customer.findFirst({
-        where: { id: customerId, companyId },
-        select: { priceListId: true, category: { select: { priceListId: true } } },
+        where: { id: customerId },
+        select: {
+          priceListId: true,
+          category: { select: { priceListId: true } },
+          ownPriceLists: { where: { isActive: true }, select: { id: true } },
+          companyTerms: { where: { companyId }, select: { priceListId: true } },
+        },
       });
+      ownListId = customer?.ownPriceLists?.[0]?.id ?? null;
+      companyTermListId = customer?.companyTerms?.[0]?.priceListId ?? null;
       customerListId = customer?.priceListId ?? null;
       categoryListId = customer?.category?.priceListId ?? null;
     }
 
-    // Tier 1 — customer-specific
-    if (customerListId) {
-      const hit = await this.lookup(companyId, customerListId, itemId, uomId, asOf);
-      if (hit) return { ...hit, source: 'CUSTOMER', priceListId: customerListId };
+    // Tier 1 — the customer's own (customer-specific) price list
+    for (const listId of [ownListId, companyTermListId, customerListId]) {
+      if (!listId) continue;
+      const hit = await this.lookup(companyId, listId, itemId, uomId, asOf);
+      if (hit) return { ...hit, source: 'CUSTOMER', priceListId: listId };
     }
 
     // Tier 2 — customer category

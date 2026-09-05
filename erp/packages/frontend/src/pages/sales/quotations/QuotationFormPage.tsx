@@ -1,7 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Save, Plus, Trash2, Send, Copy, ShoppingCart, Loader2 } from 'lucide-react';
-import { useQuotation, useCreateQuotation, useUpdateQuotation, quotationApi, type UpsertQuotationInput } from '../../../api/salesDocs';
+import {
+  useQuotation, useCreateQuotation, useUpdateQuotation, quotationApi,
+  useEnquiries, enquiryApi, type UpsertQuotationInput,
+} from '../../../api/salesDocs';
+import { masterLabel } from '@clouderp/shared';
 import { useCustomerList, priceListApi } from '../../../api/sales';
 import { useItemList, useUoms } from '../../../api/inventory';
 
@@ -13,11 +17,16 @@ export default function QuotationFormPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const isEdit = !!id;
+  // A quotation can be raised directly or pulled from a live enquiry.
+  const [sourceEnquiryId, setSourceEnquiryId] = useState('');
+  const [converting, setConverting] = useState(false);
 
   const { data: existing, isLoading } = useQuotation(id);
   const createMut = useCreateQuotation();
   const updateMut = useUpdateQuotation(id ?? '');
   const { data: customers } = useCustomerList({ limit: 200 });
+  // Only a live enquiry can be quoted.
+  const { data: enquiriesResp } = useEnquiries({ status: 'OPEN' });
   const { data: itemsResp } = useItemList({ limit: 200 });
   const { data: uomsResp } = useUoms();
   const itemOptions = (((itemsResp as any)?.data ?? []) as Array<{ id: string; code: string; description: string }>);
@@ -93,6 +102,17 @@ export default function QuotationFormPage() {
   };
 
   const saving = createMut.isPending || updateMut.isPending;
+  const convertEnquiry = async () => {
+    if (!sourceEnquiryId) { setError('Pick an enquiry'); return; }
+    setError(null); setConverting(true);
+    try {
+      const q = await enquiryApi.convert(sourceEnquiryId);
+      navigate(`/sales/quotations/${q.id}`);
+    } catch (e: any) {
+      setError(e?.response?.data?.message ?? 'Could not convert the enquiry');
+    } finally { setConverting(false); }
+  };
+
   if (isEdit && isLoading) return <div className="flex items-center justify-center h-48"><Loader2 className="animate-spin text-[#1F4E79]" /></div>;
 
   return (
@@ -116,11 +136,31 @@ export default function QuotationFormPage() {
       )}
 
       <div className="flex-1 overflow-auto p-4 bg-gray-50 space-y-4">
+        {!isEdit && (
+          <div className="bg-white border border-gray-200 rounded px-4 py-3 flex items-end gap-2 flex-wrap">
+            <div>
+              <label className="block text-[10px] text-gray-500">Create from an enquiry (optional)</label>
+              <select className="erp-input w-72" value={sourceEnquiryId} onChange={(e) => setSourceEnquiryId(e.target.value)}>
+                <option value="">Select enquiry…</option>
+                {(enquiriesResp?.data ?? []).map((en) => (
+                  <option key={en.id} value={en.id}>
+                    {en.docNo} — {en.customerName ?? ''} ({en.status})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button onClick={convertEnquiry} disabled={converting || !sourceEnquiryId} className="toolbar-btn disabled:opacity-50">
+              {converting ? <Loader2 size={13} className="animate-spin" /> : null}<span>Copy enquiry lines</span>
+            </button>
+            <span className="text-xs text-gray-500 ml-2">…or just fill the form below to quote directly.</span>
+          </div>
+        )}
+
         <div className="bg-white border border-gray-200 rounded p-4 grid grid-cols-4 gap-4">
           <div className="col-span-2"><label className="block text-xs text-gray-600 mb-1">Customer *</label>
             <select className="erp-input w-full" value={customerId} onChange={(e) => setCustomerId(e.target.value)} disabled={readOnly}>
               <option value="">Select…</option>
-              {(customers?.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+              {(customers?.data ?? []).map((c) => <option key={c.id} value={c.id}>{masterLabel(c.code, c.name)}</option>)}
             </select>
           </div>
           <div><label className="block text-xs text-gray-600 mb-1">Date</label><input type="date" className="erp-input w-full" value={quotationDate} onChange={(e) => setQuotationDate(e.target.value)} disabled={readOnly} /></div>
@@ -149,7 +189,7 @@ export default function QuotationFormPage() {
                       <td className="px-2 py-1">
                         <select className="erp-input w-52" value={row.itemId} onChange={(e) => { const it = itemOptions.find((o) => o.id === e.target.value); upd(i, { itemId: e.target.value, itemLabel: it ? `${it.code} — ${it.description}` : '' }); if (row.uomId) prefillPrice(i, e.target.value, row.uomId); }} disabled={readOnly}>
                           <option value="">Select…</option>
-                          {itemOptions.map((o) => <option key={o.id} value={o.id}>{o.code} — {o.description}</option>)}
+                          {itemOptions.map((o) => <option key={o.id} value={o.id}>{masterLabel(o.code, o.description)}</option>)}
                         </select>
                       </td>
                       <td className="px-2 py-1"><select className="erp-input w-16" value={row.uomId} onChange={(e) => { upd(i, { uomId: e.target.value }); if (row.itemId) prefillPrice(i, row.itemId, e.target.value); }} disabled={readOnly}><option value="">—</option>{uomOptions.map((o) => <option key={o.id} value={o.id}>{o.code}</option>)}</select></td>

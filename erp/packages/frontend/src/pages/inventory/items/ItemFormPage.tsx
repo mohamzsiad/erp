@@ -32,6 +32,7 @@ const schema = z.object({
   status:         z.string().default('ACTIVE'),
   trackingType:   z.string().default('NONE'),
   standardCost:   z.coerce.number().min(0).default(0),
+  reservationAllowed: z.coerce.boolean().default(false),
   shelfLife:      z.coerce.number().min(0).optional(),
   shelfLifeUnit:  z.string().default('DAYS'),
   reorderLevel:   z.coerce.number().min(0).default(0),
@@ -125,6 +126,7 @@ export default function ItemFormPage() {
         status:        item.status ?? 'ACTIVE',
         trackingType:  item.trackingType ?? 'NONE',
         standardCost:  Number(item.standardCost ?? 0),
+        reservationAllowed: !!(item as any).reservationAllowed,
         shelfLife:     item.shelfLife ?? undefined,
         shelfLifeUnit: item.shelfLifeUnit ?? 'DAYS',
         reorderLevel:  Number(item.reorderLevel ?? 0),
@@ -210,6 +212,14 @@ export default function ItemFormPage() {
 
       <FormField label="Standard Cost">
         <Input type="number" step="0.001" min={0} {...register('standardCost')} />
+      </FormField>
+
+      {/* Sales order lines can only block stock for items flagged here */}
+      <FormField label="Reservation Allowed">
+        <label className="flex items-center gap-2 text-sm h-[34px]">
+          <input type="checkbox" {...register('reservationAllowed')} />
+          <span className="text-gray-700">Stock can be reserved on a sales order</span>
+        </label>
       </FormField>
 
       <FormField label="Shelf Life">

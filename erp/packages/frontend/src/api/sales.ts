@@ -4,6 +4,8 @@ import type {
   CustomerDetail,
   CustomerContact,
   CustomerAddress,
+  CustomerCompanyTerms,
+  CustomerEffectiveTerms,
   CustomerFinancialSummary,
   CustomerCategory,
   PriceList,
@@ -36,10 +38,12 @@ export interface CustomerListRow {
   name: string;
   tradeName: string | null;
   type: string;
-  trn: string | null;
+  salesmanId: string | null;
+  salesmanName: string | null;
   paymentTerms: string | null;
   creditLimit: number;
   creditHold: boolean;
+  isBlackListed: boolean;
   isActive: boolean;
   categoryId: string | null;
   categoryName: string | null;
@@ -60,7 +64,7 @@ export const customerApi = {
     api.get<Array<{ id: string; code: string; name: string }>>('/sales/customers/search', { params: { q } }).then((r) => r.data),
 
   getById: (id: string) =>
-    api.get<CustomerDetail & { contacts: CustomerContact[]; addresses: CustomerAddress[] }>(`/sales/customers/${id}`).then((r) => r.data),
+    api.get<CustomerDetail & { addresses: CustomerAddress[]; companyTerms: CustomerCompanyTerms[] }>(`/sales/customers/${id}`).then((r) => r.data),
 
   financialSummary: (id: string) =>
     api.get<CustomerFinancialSummary>(`/sales/customers/${id}/financial-summary`).then((r) => r.data),
@@ -79,6 +83,12 @@ export const customerApi = {
 
   approve: (id: string) =>
     api.post<{ isActive: boolean }>(`/sales/customers/${id}/approve`).then((r) => r.data),
+
+  groupCompanies: () =>
+    api.get<Array<{ id: string; code: string; name: string; baseCurrency: string }>>('/sales/customers/companies').then((r) => r.data),
+
+  effectiveTerms: (id: string) =>
+    api.get<CustomerEffectiveTerms>(`/sales/customers/${id}/effective-terms`).then((r) => r.data),
 };
 
 // ── Hooks ──────────────────────────────────────────────────────────────────────
@@ -151,12 +161,18 @@ export interface PriceListItemInput {
   uomId: string;
   unitPrice: number;
   minPrice?: number;
-  validFrom?: string | null;
-  validTo?: string | null;
+  /** Both dates are mandatory — the API rejects a line without a window. */
+  validFrom: string;
+  validTo: string;
 }
 
+export type PriceListKind = 'STANDARD' | 'CUSTOMER_SPECIFIC';
+
 export interface UpsertPriceListInput {
+  code?: string;
   name: string;
+  type?: PriceListKind;
+  ownerCustomerId?: string | null;
   currencyId?: string | null;
   validFrom?: string | null;
   validTo?: string | null;
@@ -167,13 +183,20 @@ export interface UpsertPriceListInput {
 
 export interface PriceListRow {
   id: string;
+  code: string;
   name: string;
+  type: PriceListKind;
+  ownerCustomerId: string | null;
+  ownerCustomerCode: string | null;
+  ownerCustomerName: string | null;
   currencyId: string | null;
+  currencyCode: string | null;
   validFrom: string | null;
   validTo: string | null;
   isActive: boolean;
   isDefault: boolean;
   itemCount: number;
+  assignedCount: number;
 }
 
 export interface PriceListItemRow {
@@ -183,8 +206,8 @@ export interface PriceListItemRow {
   uomId: string;
   unitPrice: number;
   minPrice: number;
-  validFrom: string | null;
-  validTo: string | null;
+  validFrom: string;
+  validTo: string;
   itemCode?: string;
   itemDescription?: string;
   uomCode?: string;
@@ -192,8 +215,14 @@ export interface PriceListItemRow {
 
 export interface PriceListDetail {
   id: string;
+  code: string;
   name: string;
+  type: PriceListKind;
+  ownerCustomerId: string | null;
+  ownerCustomerCode: string | null;
+  ownerCustomerName: string | null;
   currencyId: string | null;
+  currencyCode: string | null;
   validFrom: string | null;
   validTo: string | null;
   isActive: boolean;
@@ -208,8 +237,16 @@ export interface PriceResolutionResult {
   priceListId?: string | null;
 }
 
+/** Running weighted average cost of an item, shown while pricing a line. */
+export interface ItemWac {
+  itemId: string;
+  wac: number;
+  qtyOnHand: number;
+  source: 'WAC' | 'STANDARD_COST';
+}
+
 export const priceListApi = {
-  list: (params: { search?: string; isActive?: boolean } = {}) =>
+  list: (params: { search?: string; isActive?: boolean; type?: PriceListKind } = {}) =>
     api.get<PriceListRow[]>('/sales/price-lists', { params }).then((r) => r.data),
   getById: (id: string) =>
     api.get<PriceListDetail>(`/sales/price-lists/${id}`).then((r) => r.data),
@@ -225,9 +262,11 @@ export const priceListApi = {
     api.post(`/sales/price-lists/${id}/assign`, { targetType, targetId }).then((r) => r.data),
   lookup: (params: { itemId: string; uomId: string; customerId?: string; date?: string }) =>
     api.get<PriceResolutionResult>('/sales/price-lookup', { params }).then((r) => r.data),
+  itemWac: (itemId: string) =>
+    api.get<ItemWac>('/sales/price-lists/item-wac', { params: { itemId } }).then((r) => r.data),
 };
 
-export const usePriceLists = (params: { search?: string; isActive?: boolean } = {}) =>
+export const usePriceLists = (params: { search?: string; isActive?: boolean; type?: PriceListKind } = {}) =>
   useQuery({ queryKey: PRICE_LIST_KEYS.list(params), queryFn: () => priceListApi.list(params) });
 
 export const usePriceList = (id: string | undefined) =>
@@ -255,4 +294,11 @@ export const useSetDefaultPriceList = () => {
 };
 
 // Re-export shared types used by pages
-export type { CustomerDetail, CustomerContact, CustomerAddress, CustomerFinancialSummary, CustomerCategory, PriceList, TaxCode };
+export const useGroupCompaniesLookup = () =>
+  useQuery({ queryKey: ['customers', 'groupCompanies'], queryFn: customerApi.groupCompanies });
+
+// Re-export shared types used by pages
+export type {
+  CustomerDetail, CustomerContact, CustomerAddress, CustomerCompanyTerms, CustomerEffectiveTerms,
+  CustomerFinancialSummary, CustomerCategory, PriceList, TaxCode,
+};

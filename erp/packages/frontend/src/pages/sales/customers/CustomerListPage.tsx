@@ -13,16 +13,16 @@ const COLUMNS: ColDef<CustomerListRow>[] = [
     field: 'type', headerName: 'Type', width: 110,
     valueFormatter: (p) => ({ COMPANY: 'Company', INDIVIDUAL: 'Individual', GOVERNMENT: 'Government' })[p.value as string] ?? p.value,
   },
-  { field: 'trn', headerName: 'TRN', width: 140 },
+  { field: 'salesmanName', headerName: 'Salesman', width: 160 },
   { field: 'categoryName', headerName: 'Category', width: 140 },
   { field: 'paymentTerms', headerName: 'Terms', width: 110 },
   {
-    field: 'creditLimit', headerName: 'Credit Limit', width: 130, type: 'numericColumn',
-    valueFormatter: (p) => (p.value != null ? Number(p.value).toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''),
-  },
-  {
     field: 'creditHold', headerName: 'Credit', width: 100,
     cellRenderer: (p: { value: boolean }) => (p.value ? <StatusBadge status="ON HOLD" /> : <StatusBadge status="OK" />),
+  },
+  {
+    field: 'isBlackListed', headerName: 'Black Listed', width: 120,
+    cellRenderer: (p: { value: boolean }) => (p.value ? <StatusBadge status="BLACKLISTED" /> : <span className="text-gray-300">—</span>),
   },
   {
     field: 'isActive', headerName: 'Status', width: 100,
@@ -56,10 +56,10 @@ export default function CustomerListPage() {
   const handleExport = () => {
     const rows = data?.data ?? [];
     const csv = [
-      ['Code', 'Name', 'Type', 'TRN', 'Category', 'Terms', 'Credit Limit', 'Credit Hold', 'Status'],
+      ['Code', 'Name', 'Type', 'Salesman', 'Category', 'Terms', 'Credit Hold', 'Black Listed', 'Status'],
       ...rows.map((r) => [
-        r.code, r.name, r.type, r.trn ?? '', r.categoryName ?? '', r.paymentTerms ?? '',
-        r.creditLimit, r.creditHold ? 'Hold' : 'OK', r.isActive ? 'Active' : 'Pending',
+        r.code, r.name, r.type, r.salesmanName ?? '', r.categoryName ?? '', r.paymentTerms ?? '',
+        r.creditHold ? 'Hold' : 'OK', r.isBlackListed ? 'Yes' : 'No', r.isActive ? 'Active' : 'Pending',
       ]),
     ].map((row) => row.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });

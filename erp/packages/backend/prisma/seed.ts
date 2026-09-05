@@ -189,7 +189,7 @@ async function main() {
       { module: Module.FINANCE, resource: r, action: PermissionAction.APPROVE },
       { module: Module.FINANCE, resource: r, action: PermissionAction.DELETE },
     ])).flat(),
-    ...['CUSTOMERS', 'PRICE_LIST', 'SALES_ENQUIRY', 'SALES_QUOTATION', 'SALES_ORDER', 'DELIVERY_NOTE', 'SALES_INVOICE', 'SALES_RETURN', 'CREDIT_NOTE', 'SALES_CONTRACT', 'PROGRESS_BILL', 'CREDIT_CONTROL'].map(r => ([
+    ...['CUSTOMERS', 'SALESMAN', 'PAYMENT_TERM', 'PRICE_LIST', 'SALES_ENQUIRY', 'SALES_QUOTATION', 'SALES_ORDER', 'DELIVERY_NOTE', 'SALES_INVOICE', 'SALES_RETURN', 'CREDIT_NOTE', 'SALES_CONTRACT', 'PROGRESS_BILL', 'CREDIT_CONTROL'].map(r => ([
       { module: Module.SALES, resource: r, action: PermissionAction.VIEW },
       { module: Module.SALES, resource: r, action: PermissionAction.CREATE },
       { module: Module.SALES, resource: r, action: PermissionAction.EDIT },
@@ -249,7 +249,7 @@ async function main() {
   ];
 
   const salesMgrPerms: PermDef[] = [
-    ...['CUSTOMERS', 'PRICE_LIST', 'SALES_ENQUIRY', 'SALES_QUOTATION', 'SALES_ORDER', 'DELIVERY_NOTE', 'SALES_INVOICE', 'SALES_RETURN', 'CREDIT_NOTE', 'SALES_CONTRACT', 'PROGRESS_BILL'].map(r => ([
+    ...['CUSTOMERS', 'SALESMAN', 'PAYMENT_TERM', 'PRICE_LIST', 'SALES_ENQUIRY', 'SALES_QUOTATION', 'SALES_ORDER', 'DELIVERY_NOTE', 'SALES_INVOICE', 'SALES_RETURN', 'CREDIT_NOTE', 'SALES_CONTRACT', 'PROGRESS_BILL'].map(r => ([
       { module: Module.SALES, resource: r, action: PermissionAction.VIEW },
       { module: Module.SALES, resource: r, action: PermissionAction.CREATE },
       { module: Module.SALES, resource: r, action: PermissionAction.EDIT },
@@ -271,6 +271,8 @@ async function main() {
       { module: Module.SALES, resource: r, action: PermissionAction.EDIT },
     ])).flat(),
     { module: Module.SALES, resource: 'PRICE_LIST', action: PermissionAction.VIEW },
+    { module: Module.SALES, resource: 'SALESMAN', action: PermissionAction.VIEW },
+    { module: Module.SALES, resource: 'PAYMENT_TERM', action: PermissionAction.VIEW },
     { module: Module.SALES, resource: 'DELIVERY_NOTE', action: PermissionAction.VIEW },
     { module: Module.SALES, resource: 'SALES_INVOICE', action: PermissionAction.VIEW },
     { module: Module.INVENTORY, resource: 'ITEMS', action: PermissionAction.VIEW },

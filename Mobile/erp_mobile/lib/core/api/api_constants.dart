@@ -65,4 +65,11 @@ class ApiConstants {
 
   // AI Chat
   static const String aiChat = '/ai/chat';
+
+  // Sales
+  static const String salesCustomers  = '/sales/customers';
+  static const String salesQuotations = '/sales/quotations';
+  static const String salesOrders     = '/sales/orders';
+  static const String salesInvoices   = '/sales/invoices';
+  static const String salesDashboard  = '/sales/dashboard/kpis';
 }

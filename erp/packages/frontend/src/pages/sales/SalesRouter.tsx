@@ -4,6 +4,10 @@ import { Loader2 } from 'lucide-react';
 
 const CustomerListPage = lazy(() => import('./customers/CustomerListPage'));
 const CustomerFormPage = lazy(() => import('./customers/CustomerFormPage'));
+const SalesmenListPage = lazy(() => import('./salesmen/SalesmenListPage'));
+const SalesmanFormPage = lazy(() => import('./salesmen/SalesmanFormPage'));
+const PaymentTermsListPage = lazy(() => import('./paymentTerms/PaymentTermsListPage'));
+const PaymentTermFormPage = lazy(() => import('./paymentTerms/PaymentTermFormPage'));
 const PriceListsPage = lazy(() => import('./priceLists/PriceListsPage'));
 const PriceListEditorPage = lazy(() => import('./priceLists/PriceListEditorPage'));
 const EnquiriesListPage = lazy(() => import('./enquiries/EnquiriesListPage'));
@@ -20,6 +24,12 @@ const ReturnsListPage = lazy(() => import('./returns/ReturnsListPage'));
 const ReturnFormPage = lazy(() => import('./returns/ReturnFormPage'));
 const CreditNotesListPage = lazy(() => import('./creditNotes/CreditNotesListPage'));
 const CreditNoteFormPage = lazy(() => import('./creditNotes/CreditNoteFormPage'));
+const ContractsListPage = lazy(() => import('./contracts/ContractsListPage'));
+const ContractFormPage = lazy(() => import('./contracts/ContractFormPage'));
+const ProgressBillsListPage = lazy(() => import('./progressBills/ProgressBillsListPage'));
+const ProgressBillFormPage = lazy(() => import('./progressBills/ProgressBillFormPage'));
+const SalesDashboardPage = lazy(() => import('./SalesDashboardPage'));
+const SalesReportsPage = lazy(() => import('./SalesReportsPage'));
 
 const Spinner = () => (
   <div className="flex items-center justify-center h-48">
@@ -31,12 +41,24 @@ export default function SalesRouter() {
   return (
     <Suspense fallback={<Spinner />}>
       <Routes>
-        <Route index element={<Navigate to="customers" replace />} />
+        <Route index element={<Navigate to="dashboard" replace />} />
+        <Route path="dashboard" element={<SalesDashboardPage />} />
+        <Route path="reports" element={<SalesReportsPage />} />
 
         {/* Customer Master */}
         <Route path="customers" element={<CustomerListPage />} />
         <Route path="customers/new" element={<CustomerFormPage />} />
         <Route path="customers/:id" element={<CustomerFormPage />} />
+
+        {/* Salesman Master */}
+        <Route path="salesmen" element={<SalesmenListPage />} />
+        <Route path="salesmen/new" element={<SalesmanFormPage />} />
+        <Route path="salesmen/:id" element={<SalesmanFormPage />} />
+
+        {/* Payment Terms */}
+        <Route path="payment-terms" element={<PaymentTermsListPage />} />
+        <Route path="payment-terms/new" element={<PaymentTermFormPage />} />
+        <Route path="payment-terms/:id" element={<PaymentTermFormPage />} />
 
         {/* Price Lists */}
         <Route path="price-lists" element={<PriceListsPage />} />
@@ -75,6 +97,16 @@ export default function SalesRouter() {
         <Route path="credit-notes" element={<CreditNotesListPage />} />
         <Route path="credit-notes/new" element={<CreditNoteFormPage />} />
         <Route path="credit-notes/:id" element={<CreditNoteFormPage />} />
+
+        {/* Contracts */}
+        <Route path="contracts" element={<ContractsListPage />} />
+        <Route path="contracts/new" element={<ContractFormPage />} />
+        <Route path="contracts/:id" element={<ContractFormPage />} />
+
+        {/* Progress Bills */}
+        <Route path="progress-bills" element={<ProgressBillsListPage />} />
+        <Route path="progress-bills/new" element={<ProgressBillFormPage />} />
+        <Route path="progress-bills/:id" element={<ProgressBillFormPage />} />
       </Routes>
     </Suspense>
   );

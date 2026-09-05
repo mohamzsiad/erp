@@ -27,11 +27,44 @@ const addressSchema = {
   required: ['type', 'line1'],
   properties: {
     type: { type: 'string', enum: ['BILL_TO', 'SHIP_TO'] },
+    name: { type: 'string', nullable: true },
     line1: { type: 'string' },
     line2: { type: 'string', nullable: true },
-    city: { type: 'string', nullable: true },
+    line3: { type: 'string', nullable: true },
+    line4: { type: 'string', nullable: true },
+    line5: { type: 'string', nullable: true },
+    countryId: { type: 'string', nullable: true },
     country: { type: 'string', nullable: true },
+    cityId: { type: 'string', nullable: true },
+    city: { type: 'string', nullable: true },
+    postalCode: { type: 'string', nullable: true },
+    street: { type: 'string', nullable: true },
+    contactPerson: { type: 'string', nullable: true },
+    email: { type: 'string', nullable: true },
+    phone: { type: 'string', nullable: true },
+    mobile: { type: 'string', nullable: true },
+    fax: { type: 'string', nullable: true },
+    vatNo: { type: 'string', nullable: true },
+    crNo: { type: 'string', nullable: true },
+    taxCardNo: { type: 'string', nullable: true },
     isDefault: { type: 'boolean' },
+  },
+};
+
+const companyTermSchema = {
+  type: 'object',
+  required: ['companyId'],
+  properties: {
+    companyId: { type: 'string' },
+    salesmanId: { type: 'string', nullable: true },
+    priceListId: { type: 'string', nullable: true },
+    paymentTermId: { type: 'string', nullable: true },
+    creditLimit: { type: 'number', minimum: 0 },
+    creditExposureLimit: { type: 'number', minimum: 0 },
+    closeToExpiryDays: { type: 'integer', nullable: true },
+    isBlackListed: { type: 'boolean' },
+    isGreyListed: { type: 'boolean' },
+    isActive: { type: 'boolean' },
   },
 };
 
@@ -44,15 +77,21 @@ const customerBodyProps = {
   defaultTaxCodeId: { type: 'string', nullable: true },
   isTaxExempt: { type: 'boolean' },
   paymentTerms: { type: 'string', nullable: true },
+  paymentTermId: { type: 'string', nullable: true },
+  currencyId: { type: 'string', nullable: true },
   creditLimit: { type: 'number', minimum: 0 },
   creditHold: { type: 'boolean' },
+  isBlackListed: { type: 'boolean' },
   priceListId: { type: 'string', nullable: true },
   salespersonId: { type: 'string', nullable: true },
+  salesmanId: { type: 'string', nullable: true },
   categoryId: { type: 'string', nullable: true },
   notes: { type: 'string', nullable: true },
   isActive: { type: 'boolean' },
   contacts: { type: 'array', items: contactSchema },
   addresses: { type: 'array', items: addressSchema },
+  companyTerms: { type: 'array', items: companyTermSchema },
+  currencyIds: { type: 'array', items: { type: 'string' } },
 };
 
 export default async function customerRoutes(fastify: FastifyInstance) {
@@ -67,6 +106,25 @@ export default async function customerRoutes(fastify: FastifyInstance) {
     preHandler: [PERM.VIEW],
   }, async (req, reply) => {
     return reply.send(await svc().search(req.user.companyId, req.query.q));
+  });
+
+  // GET /customers/companies  (group companies for the company-terms grid)
+  fastify.get('/companies', {
+    schema: { tags: ['Sales - Customers'] },
+    preHandler: [PERM.VIEW],
+  }, async (_req, reply) => {
+    return reply.send(await svc().listGroupCompanies());
+  });
+
+  // GET /customers/:id/effective-terms  (terms spooled onto sales documents)
+  fastify.get<{ Params: { id: string } }>('/:id/effective-terms', {
+    schema: {
+      tags: ['Sales - Customers'],
+      params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
+    },
+    preHandler: [PERM.VIEW],
+  }, async (req, reply) => {
+    return reply.send(await svc().effectiveTerms(req.params.id, req.user.companyId));
   });
 
   // GET /customers

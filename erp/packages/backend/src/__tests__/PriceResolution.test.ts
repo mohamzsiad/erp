@@ -4,8 +4,15 @@ import { PriceResolutionService } from '../services/sales/PriceResolutionService
 interface ListRec { id: string; validFrom: Date | null; validTo: Date | null; isActive?: boolean }
 interface ItemRec { unitPrice: number; minPrice: number; validFrom: Date | null; validTo: Date | null }
 
+interface CustomerRec {
+  priceListId: string | null;
+  category: { priceListId: string | null } | null;
+  ownPriceLists?: Array<{ id: string }>;          // customer-specific list (1-to-1)
+  companyTerms?: Array<{ priceListId: string | null }>; // company-wise terms row
+}
+
 function makePrisma(opts: {
-  customer?: { priceListId: string | null; category: { priceListId: string | null } | null } | null;
+  customer?: CustomerRec | null;
   lists?: Record<string, ListRec>;                // by id
   defaultList?: ListRec | null;
   itemsByList?: Record<string, ItemRec>;          // by priceListId
@@ -49,6 +56,38 @@ describe('PriceResolutionService.resolvePrice', () => {
     expect(res.unitPrice).toBe(100);
     expect(res.minPrice).toBe(90);
     expect(res.priceListId).toBe('PL_CUST');
+  });
+
+  it('Tier 1 — a customer-specific price list outranks the assigned standard list', async () => {
+    const prisma = makePrisma({
+      customer: {
+        priceListId: 'PL_STD',
+        category: { priceListId: 'PL_CAT' },
+        ownPriceLists: [{ id: 'PL_OWN' }],
+      },
+      lists: { PL_OWN: activeList('PL_OWN'), PL_STD: activeList('PL_STD'), PL_CAT: activeList('PL_CAT') },
+      itemsByList: { PL_OWN: item(80, 75), PL_STD: item(100, 90), PL_CAT: item(110, 95) },
+    });
+    const res = await new PriceResolutionService(prisma).resolvePrice({ ...base, customerId: 'C1' });
+    expect(res.source).toBe('CUSTOMER');
+    expect(res.unitPrice).toBe(80);
+    expect(res.priceListId).toBe('PL_OWN');
+  });
+
+  it('Tier 1 — the company-terms price list is used ahead of the customer header list', async () => {
+    const prisma = makePrisma({
+      customer: {
+        priceListId: 'PL_STD',
+        category: null,
+        companyTerms: [{ priceListId: 'PL_CO' }],
+      },
+      lists: { PL_CO: activeList('PL_CO'), PL_STD: activeList('PL_STD') },
+      itemsByList: { PL_CO: item(90, 85), PL_STD: item(100, 90) },
+    });
+    const res = await new PriceResolutionService(prisma).resolvePrice({ ...base, customerId: 'C1' });
+    expect(res.source).toBe('CUSTOMER');
+    expect(res.unitPrice).toBe(90);
+    expect(res.priceListId).toBe('PL_CO');
   });
 
   it('Tier 2 — falls back to the customer-category price list', async () => {
@@ -114,7 +153,6 @@ describe('PriceResolutionService.resolvePrice', () => {
       lists: { PL_CUST: activeList('PL_CUST') },
       itemsByList: { PL_CUST: item(100, 90, null, past) }, // expired
       defaultList: activeList('PL_DEF'),
-      itemsByList2: {} as any,
     });
     // default has a valid item -> should fall through to DEFAULT
     (prisma.priceListItem.findFirst as jest.Mock).mockImplementation(async ({ where }: any) => {

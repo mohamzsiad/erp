@@ -226,12 +226,16 @@ const NAV_TREE: NavItem[] = [
     icon: <Wallet size={16} />,
     module: 'SALES',
     children: [
+      { id: 'sales-dashboard', label: 'Dashboard', path: '/sales/dashboard', icon: <LayoutDashboard size={13} /> },
+      { id: 'sales-reports', label: 'Reports', path: '/sales/reports', icon: <BarChart2 size={13} /> },
       {
         id: 'sales-masters',
         label: 'Masters',
         icon: <Users size={14} />,
         children: [
           { id: 'customer-list', label: 'Customer Master', path: '/sales/customers', icon: <Building2 size={13} /> },
+          { id: 'salesman-list', label: 'Salesman Master', path: '/sales/salesmen', icon: <Users size={13} /> },
+          { id: 'paymentterm-list', label: 'Payment Terms', path: '/sales/payment-terms', icon: <FileText size={13} /> },
           { id: 'pricelist-list', label: 'Price Lists', path: '/sales/price-lists', icon: <FileText size={13} /> },
         ],
       },
@@ -247,6 +251,15 @@ const NAV_TREE: NavItem[] = [
           { id: 'invoice-list', label: 'Sales Invoices', path: '/sales/invoices', icon: <Receipt size={13} /> },
           { id: 'return-list', label: 'Sales Returns', path: '/sales/returns', icon: <ArrowRightLeft size={13} /> },
           { id: 'creditnote-list', label: 'Credit Notes', path: '/sales/credit-notes', icon: <FileText size={13} /> },
+        ],
+      },
+      {
+        id: 'sales-projects',
+        label: 'Projects',
+        icon: <ClipboardList size={14} />,
+        children: [
+          { id: 'contract-list', label: 'Sales Contracts', path: '/sales/contracts', icon: <FileText size={13} /> },
+          { id: 'progressbill-list', label: 'Progress Bills (IPC)', path: '/sales/progress-bills', icon: <TrendingUp size={13} /> },
         ],
       },
     ],

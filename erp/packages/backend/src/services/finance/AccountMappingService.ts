@@ -70,7 +70,8 @@ export class AccountMappingService {
         companyId_mappingType_refId: {
           companyId,
           mappingType,
-          refId: refId ?? null,
+          // refId is nullable, but Prisma types compound-unique keys as non-null.
+          refId: (refId ?? null) as string,
         },
       },
       create: { companyId, mappingType, accountId, refId: refId ?? null },

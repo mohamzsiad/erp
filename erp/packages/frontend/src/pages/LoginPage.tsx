@@ -16,6 +16,16 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
+// Dev convenience: prefill the seeded admin so `npm run dev` is a single click.
+// import.meta.env.DEV is statically false in a production build, so these
+// literals are dropped by the bundler and never ship.
+const defaultCredentials: LoginFormData = import.meta.env.DEV
+  ? {
+      email: import.meta.env.VITE_DEV_EMAIL ?? 'admin@demo.com',
+      password: import.meta.env.VITE_DEV_PASSWORD ?? 'Admin@123',
+    }
+  : { email: '', password: '' };
+
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -32,7 +42,7 @@ const LoginPage: React.FC = () => {
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<LoginFormData>({
-    defaultValues: { email: '' },
+    defaultValues: defaultCredentials,
   });
 
   const validate = (data: LoginFormData): string | null => {

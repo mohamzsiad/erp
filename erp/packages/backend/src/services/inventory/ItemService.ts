@@ -27,6 +27,8 @@ export interface CreateItemInput {
   minStock?: number;
   maxStock?: number;
   standardCost?: number;
+  /** Allows a sales order line to block warehouse stock for this item. */
+  reservationAllowed?: boolean;
   trackingType?: string;
   status?: string;
 }
@@ -127,6 +129,7 @@ export class ItemService {
         minStock: input.minStock ?? 0,
         maxStock: input.maxStock ?? 0,
         standardCost: input.standardCost ?? 0,
+        reservationAllowed: input.reservationAllowed ?? false,
         trackingType: (input.trackingType as any) ?? 'NONE',
         status: (input.status as ItemStatus) ?? 'ACTIVE',
       },
@@ -157,6 +160,7 @@ export class ItemService {
         ...(input.minStock !== undefined       && { minStock: input.minStock }),
         ...(input.maxStock !== undefined       && { maxStock: input.maxStock }),
         ...(input.standardCost !== undefined   && { standardCost: input.standardCost }),
+        ...(input.reservationAllowed !== undefined && { reservationAllowed: input.reservationAllowed }),
         ...(input.trackingType !== undefined   && { trackingType: input.trackingType as any }),
         ...(input.status !== undefined         && { status: input.status as ItemStatus }),
       },
@@ -238,7 +242,7 @@ export class ItemService {
       select: {
         id: true, code: true, description: true,
         uomId: true, uom: { select: { code: true, symbol: true } },
-        standardCost: true,
+        standardCost: true, reservationAllowed: true,
       },
       take: limit,
       orderBy: { code: 'asc' },

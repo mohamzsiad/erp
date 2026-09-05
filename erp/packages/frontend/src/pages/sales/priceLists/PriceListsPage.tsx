@@ -3,12 +3,23 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, RefreshCw } from 'lucide-react';
 import DataGrid, { type ColDef } from '../../../components/ui/DataGrid';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
-import { usePriceLists, type PriceListRow } from '../../../api/sales';
+import { usePriceLists, type PriceListRow, type PriceListKind } from '../../../api/sales';
 import { format } from 'date-fns';
 
 const COLUMNS: ColDef<PriceListRow>[] = [
-  { field: 'name', headerName: 'Name', flex: 2, minWidth: 220, pinned: 'left' },
+  { field: 'code', headerName: 'Code', width: 120, pinned: 'left' },
+  { field: 'name', headerName: 'Description', flex: 2, minWidth: 220 },
+  {
+    field: 'type', headerName: 'Type', width: 160,
+    valueFormatter: (p) => (p.value === 'CUSTOMER_SPECIFIC' ? 'Customer Specific' : 'Standard'),
+  },
+  {
+    field: 'ownerCustomerName', headerName: 'Customer', width: 200,
+    valueFormatter: (p) => (p.value as string | null) ?? '—',
+  },
+  { field: 'currencyCode', headerName: 'Currency', width: 100 },
   { field: 'itemCount', headerName: 'Items', width: 90, type: 'numericColumn' },
+  { field: 'assignedCount', headerName: 'Attached To', width: 120, type: 'numericColumn' },
   {
     field: 'isDefault', headerName: 'Default', width: 100,
     cellRenderer: (p: { value: boolean }) => (p.value ? <StatusBadge status="DEFAULT" /> : <span className="text-gray-300">—</span>),
@@ -30,7 +41,11 @@ const COLUMNS: ColDef<PriceListRow>[] = [
 export default function PriceListsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const { data, isLoading, refetch } = usePriceLists({ search: search || undefined });
+  const [typeFilter, setTypeFilter] = useState<PriceListKind | ''>('');
+  const { data, isLoading, refetch } = usePriceLists({
+    search: search || undefined,
+    type: typeFilter || undefined,
+  });
 
   const handleRowDoubleClick = useCallback(
     (row: PriceListRow) => navigate(`/sales/price-lists/${row.id}`),
@@ -43,6 +58,11 @@ export default function PriceListsPage() {
         <h2 className="text-sm font-semibold text-gray-800">Price Lists</h2>
         <span className="text-xs text-gray-400">({data?.length ?? 0})</span>
         <div className="flex-1" />
+        <select className="erp-input w-44" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as PriceListKind | '')}>
+          <option value="">All types</option>
+          <option value="STANDARD">Standard</option>
+          <option value="CUSTOMER_SPECIFIC">Customer Specific</option>
+        </select>
         <input
           type="text"
           placeholder="Search price lists…"

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { masterLabel } from '@clouderp/shared';
 import { ArrowLeft, Save, Plus, Trash2, CheckCircle, XCircle, Printer, FileUp, Loader2 } from 'lucide-react';
 import {
   useInvoice, useCreateInvoice, invoiceApi, useDeliveries,
@@ -132,7 +133,7 @@ export default function InvoiceFormPage() {
           <div className="col-span-2"><label className="block text-xs text-gray-600 mb-1">Customer *</label>
             <select className="erp-input w-full" value={customerId} onChange={(e) => setCustomerId(e.target.value)} disabled={isEdit}>
               <option value="">Select…</option>
-              {(customers?.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+              {(customers?.data ?? []).map((c) => <option key={c.id} value={c.id}>{masterLabel(c.code, c.name)}</option>)}
             </select>
           </div>
           <div><label className="block text-xs text-gray-600 mb-1">Invoice Date</label><input type="date" className="erp-input w-full" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} disabled={isEdit} /></div>
@@ -160,7 +161,7 @@ export default function InvoiceFormPage() {
                       <td className="px-2 py-1">
                         {isEdit ? row.itemLabel : (
                           <select className="erp-input w-52" value={row.itemId} onChange={(e) => { const it = itemOptions.find((o) => o.id === e.target.value); upd(i, { itemId: e.target.value, itemLabel: it ? `${it.code} — ${it.description}` : '' }); }}>
-                            <option value="">Select…</option>{itemOptions.map((o) => <option key={o.id} value={o.id}>{o.code} — {o.description}</option>)}
+                            <option value="">Select…</option>{itemOptions.map((o) => <option key={o.id} value={o.id}>{masterLabel(o.code, o.description)}</option>)}
                           </select>
                         )}
                       </td>

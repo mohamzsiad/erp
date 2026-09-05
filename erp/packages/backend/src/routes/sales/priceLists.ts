@@ -10,19 +10,23 @@ const PERM = {
 
 const itemSchema = {
   type: 'object',
-  required: ['itemId', 'uomId', 'unitPrice'],
+  // A price line is only meaningful with a validity window, so both dates are required.
+  required: ['itemId', 'uomId', 'unitPrice', 'validFrom', 'validTo'],
   properties: {
     itemId: { type: 'string' },
     uomId: { type: 'string' },
     unitPrice: { type: 'number', minimum: 0 },
     minPrice: { type: 'number', minimum: 0 },
-    validFrom: { type: 'string', nullable: true },
-    validTo: { type: 'string', nullable: true },
+    validFrom: { type: 'string' },
+    validTo: { type: 'string' },
   },
 };
 
 const headerProps = {
+  code: { type: 'string', maxLength: 20 },
   name: { type: 'string', maxLength: 150 },
+  type: { type: 'string', enum: ['STANDARD', 'CUSTOMER_SPECIFIC'] },
+  ownerCustomerId: { type: 'string', nullable: true },
   currencyId: { type: 'string', nullable: true },
   validFrom: { type: 'string', nullable: true },
   validTo: { type: 'string', nullable: true },
@@ -34,14 +38,32 @@ const headerProps = {
 export default async function priceListRoutes(fastify: FastifyInstance) {
   const svc = () => new PriceListService(fastify.prisma);
 
-  fastify.get<{ Querystring: { search?: string; isActive?: boolean } }>('/', {
+  fastify.get<{ Querystring: { search?: string; isActive?: boolean; type?: 'STANDARD' | 'CUSTOMER_SPECIFIC' } }>('/', {
     schema: {
       tags: ['Sales - Price Lists'],
-      querystring: { type: 'object', properties: { search: { type: 'string' }, isActive: { type: 'boolean' } } },
+      querystring: {
+        type: 'object',
+        properties: {
+          search: { type: 'string' },
+          isActive: { type: 'boolean' },
+          type: { type: 'string', enum: ['STANDARD', 'CUSTOMER_SPECIFIC'] },
+        },
+      },
     },
     preHandler: [PERM.VIEW],
   }, async (req, reply) => {
     return reply.send(await svc().list(req.user.companyId, req.query));
+  });
+
+  // Running weighted average cost of an item, shown while pricing a line.
+  fastify.get<{ Querystring: { itemId: string } }>('/item-wac', {
+    schema: {
+      tags: ['Sales - Price Lists'],
+      querystring: { type: 'object', required: ['itemId'], properties: { itemId: { type: 'string' } } },
+    },
+    preHandler: [PERM.VIEW],
+  }, async (req, reply) => {
+    return reply.send(await svc().itemWac(req.user.companyId, req.query.itemId));
   });
 
   fastify.get<{ Params: { id: string } }>('/:id', {

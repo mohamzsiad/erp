@@ -8,6 +8,10 @@
 // ── Enums ─────────────────────────────────────────────────────────────────────
 export type CustomerType         = 'COMPANY' | 'INDIVIDUAL' | 'GOVERNMENT';
 export type AddressType          = 'BILL_TO' | 'SHIP_TO';
+export type PriceListType        = 'STANDARD' | 'CUSTOMER_SPECIFIC';
+export type SalesmanType         = 'SALESMAN' | 'SUPERVISOR' | 'VAN_SALESMAN' | 'MANAGER';
+export type PaymentMode          = 'NORMAL' | 'ADVANCE' | 'CASH_ON_DELIVERY' | 'CREDIT';
+export type DueDateBasis         = 'DOCUMENT_DATE' | 'DELIVERY_DATE' | 'MONTH_END' | 'INVOICE_DATE';
 export type SalesEnquiryStatus   = 'OPEN' | 'QUOTED' | 'WON' | 'LOST' | 'CLOSED';
 export type SalesQuotationStatus = 'DRAFT' | 'SENT' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
 export type SalesOrderType       = 'STOCK' | 'SERVICE' | 'PROJECT' | 'DIRECT';
@@ -66,11 +70,141 @@ export interface CustomerAddress {
   id: string;
   customerId: string;
   type: AddressType;
+  name: string | null;
   line1: string;
   line2: string | null;
-  city: string | null;
+  line3: string | null;
+  line4: string | null;
+  line5: string | null;
+  countryId: string | null;
   country: string | null;
+  cityId: string | null;
+  city: string | null;
+  postalCode: string | null;
+  street: string | null;
+  // Contact details are held per address — there is no separate contacts tab
+  contactPerson: string | null;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+  fax: string | null;
+  // Statutory registration numbers
+  vatNo: string | null;
+  crNo: string | null;
+  taxCardNo: string | null;
   isDefault: boolean;
+}
+
+// ── Country / city reference data ─────────────────────────────────────────────
+export interface Country {
+  id: string;
+  code: string;
+  name: string;
+  /** Expected leading characters of a VAT number, e.g. "OM". */
+  vatPrefix: string | null;
+  /** Mandated total length of a VAT number; null means unchecked. */
+  vatLength: number | null;
+  vatFormatHint: string | null;
+  isActive: boolean;
+  cityCount?: number;
+}
+
+export interface City {
+  id: string;
+  countryId: string;
+  code: string;
+  name: string;
+  isActive?: boolean;
+}
+
+// ── Salesman master ───────────────────────────────────────────────────────────
+export interface Salesman {
+  id: string;
+  companyId: string;
+  code: string;
+  name: string;
+  shortName: string | null;
+  type: SalesmanType;
+  minMarkupPct: number;
+  maxVariancePct: number;
+  locationId: string | null;
+  locationName?: string | null;
+  contactNumber: string | null;
+  email: string | null;
+  userId: string | null;
+  isActive: boolean;
+  customerCount?: number;
+}
+
+export interface UpsertSalesmanInput {
+  code?: string;
+  name: string;
+  shortName?: string | null;
+  type?: SalesmanType;
+  minMarkupPct?: number;
+  maxVariancePct?: number;
+  locationId?: string | null;
+  contactNumber?: string | null;
+  email?: string | null;
+  userId?: string | null;
+  isActive?: boolean;
+}
+
+// ── Payment terms master ──────────────────────────────────────────────────────
+export interface PaymentTermLine {
+  id?: string;
+  lineNo?: number;
+  paymentPct: number;
+  addMonths: number;
+  creditDays: number;
+  cashDiscountDays: number | null;
+  cashDiscountPct: number | null;
+  isActive: boolean;
+}
+
+export interface PaymentTerm {
+  id: string;
+  companyId: string;
+  code: string;
+  name: string;
+  shortName: string | null;
+  paymentMode: PaymentMode;
+  dueDateBasis: DueDateBasis;
+  dueDateAfterAdvance: boolean;
+  creditDays: number;
+  isActive: boolean;
+  lines: PaymentTermLine[];
+}
+
+export interface UpsertPaymentTermInput {
+  code?: string;
+  name: string;
+  shortName?: string | null;
+  paymentMode?: PaymentMode;
+  dueDateBasis?: DueDateBasis;
+  dueDateAfterAdvance?: boolean;
+  creditDays?: number;
+  isActive?: boolean;
+  lines?: Array<Omit<PaymentTermLine, 'id' | 'lineNo'>>;
+}
+
+// ── Company-wise customer terms (group companies) ─────────────────────────────
+export interface CustomerCompanyTerms {
+  id?: string;
+  companyId: string;
+  companyName?: string | null;
+  salesmanId: string | null;
+  salesmanName?: string | null;
+  priceListId: string | null;
+  priceListName?: string | null;
+  paymentTermId: string | null;
+  paymentTermName?: string | null;
+  creditLimit: number;
+  creditExposureLimit: number;
+  closeToExpiryDays: number | null;
+  isBlackListed: boolean;
+  isGreyListed: boolean;
+  isActive: boolean;
 }
 
 export interface CustomerCategory {
@@ -92,10 +226,14 @@ export interface CustomerDetail {
   defaultTaxCodeId: string | null;
   isTaxExempt: boolean;
   paymentTerms: string | null;
+  paymentTermId: string | null;
+  currencyId: string | null;
   creditLimit: number;
   creditHold: boolean;
+  isBlackListed: boolean;
   priceListId: string | null;
   salespersonId: string | null;
+  salesmanId: string | null;
   categoryId: string | null;
   notes: string | null;
   isActive: boolean;
@@ -103,9 +241,37 @@ export interface CustomerDetail {
   updatedAt: string;
   contacts?: CustomerContact[];
   addresses?: CustomerAddress[];
+  companyTerms?: CustomerCompanyTerms[];
   // Enriched
   categoryName?: string;
   salespersonName?: string;
+  salesmanName?: string | null;
+  paymentTermName?: string | null;
+  currencyCode?: string | null;
+  priceListLabel?: string | null;
+  currencyIds?: string[];
+  allowedCurrencies?: Array<{ currencyId: string; code: string; name: string; isDefault: boolean }>;
+}
+
+/** Terms a sales document spools off the customer master for a given company. */
+export interface CustomerEffectiveTerms {
+  customerId: string;
+  companyId: string;
+  salesmanId: string | null;
+  priceListId: string | null;
+  paymentTermId: string | null;
+  paymentTerms: string | null;
+  currencyId: string | null;
+  creditLimit: number;
+  creditExposureLimit: number;
+  creditHold: boolean;
+  isBlackListed: boolean;
+  isGreyListed: boolean;
+  isActive: boolean;
+  defaultTaxCodeId: string | null;
+  isTaxExempt: boolean;
+  /** True when the customer has a terms row for this company. */
+  hasCompanyTerms?: boolean;
 }
 
 export interface CustomerFinancialSummary {
@@ -126,15 +292,22 @@ export interface UpsertCustomerInput {
   defaultTaxCodeId?: string;
   isTaxExempt?: boolean;
   paymentTerms?: string;
+  paymentTermId?: string;
+  currencyId?: string;
   creditLimit?: number;
   creditHold?: boolean;
+  isBlackListed?: boolean;
   priceListId?: string;
   salespersonId?: string;
+  salesmanId?: string;
   categoryId?: string;
   notes?: string;
   isActive?: boolean;
   contacts?: Array<Omit<CustomerContact, 'id' | 'customerId'>>;
   addresses?: Array<Omit<CustomerAddress, 'id' | 'customerId'>>;
+  companyTerms?: CustomerCompanyTerms[];
+  /** Currencies this customer may transact in; the first is the default. */
+  currencyIds?: string[];
 }
 
 // ── Price lists ───────────────────────────────────────────────────────────────
@@ -145,8 +318,9 @@ export interface PriceListItem {
   uomId: string;
   unitPrice: number;
   minPrice: number;
-  validFrom: string | null;
-  validTo: string | null;
+  /** Both dates are mandatory — a price with no validity window is rejected. */
+  validFrom: string;
+  validTo: string;
   // Enriched
   itemCode?: string;
   itemDescription?: string;
@@ -155,12 +329,22 @@ export interface PriceListItem {
 export interface PriceList {
   id: string;
   companyId: string;
+  /** Mandatory unique key — auto-generated (STD001 / CSP001) when left blank. */
+  code: string;
   name: string;
+  /** STANDARD attaches to many customers/categories; CUSTOMER_SPECIFIC to one customer. */
+  type: PriceListType;
+  ownerCustomerId: string | null;
+  ownerCustomerCode?: string | null;
+  ownerCustomerName?: string | null;
   currencyId: string | null;
+  currencyCode?: string | null;
   validFrom: string | null;
   validTo: string | null;
   isActive: boolean;
   isDefault: boolean;
+  itemCount?: number;
+  assignedCount?: number;
   items?: PriceListItem[];
 }
 
@@ -268,9 +452,37 @@ export interface SalesOrderLine {
   taxCodeId: string | null;
   netAmount: number;
   requestedDate: string | null;
+  // Stock reservation held by this line
+  reservedQty: number;
+  reserveWarehouseId: string | null;
+  reserveUntil: string | null;
   lineNo: number;
   // Enriched (availability)
   availableToPromise?: number;
+  groupAvailable?: number;
+  reserveWarehouseCode?: string | null;
+  /** From the item master — reservation controls are hidden when false. */
+  reservationAllowed?: boolean;
+}
+
+/** Warehouse-level and group-level stock for one item. */
+export interface ItemStockPosition {
+  itemId: string;
+  warehouseId: string | null;
+  warehouseOnHand: number;
+  warehouseReserved: number;
+  warehouseAvailable: number;
+  groupOnHand: number;
+  groupReserved: number;
+  groupAvailable: number;
+  byWarehouse: Array<{
+    warehouseId: string;
+    warehouseCode: string;
+    warehouseName: string;
+    onHand: number;
+    reserved: number;
+    available: number;
+  }>;
 }
 
 export interface SalesOrder {
@@ -286,7 +498,13 @@ export interface SalesOrder {
   billToAddressId: string | null;
   shipToAddressId: string | null;
   salespersonId: string | null;
+  salesmanId: string | null;
   paymentTerms: string | null;
+  paymentTermId: string | null;
+  currencyId: string | null;
+  exchangeRate: number;
+  /** Location the order is raised from. */
+  locationId: string | null;
   warehouseId: string | null;
   notes: string | null;
   status: SalesOrderStatus;
@@ -301,6 +519,9 @@ export interface SalesOrder {
   updatedAt: string;
   lines?: SalesOrderLine[];
   customerName?: string;
+  salesmanName?: string | null;
+  currencyCode?: string | null;
+  locationName?: string | null;
 }
 
 export interface CreditCheckResult {

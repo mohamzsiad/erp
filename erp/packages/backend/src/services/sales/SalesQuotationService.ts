@@ -204,6 +204,11 @@ export class SalesQuotationService {
     const enq = await this.prisma.salesEnquiry.findFirst({ where: { id: enquiryId, companyId }, include: { lines: true } });
     if (!enq) throw Object.assign(new Error('Sales enquiry not found'), { statusCode: 404 });
     if (!enq.customerId) throw Object.assign(new Error('Enquiry has no customer; set a customer before quoting'), { statusCode: 422 });
+    // A document only moves forward from a live state — a lost or closed
+    // enquiry cannot be quoted.
+    if (!['OPEN', 'QUOTED'].includes(enq.status)) {
+      throw Object.assign(new Error(`Enquiry ${enq.docNo} is ${enq.status} and cannot be quoted`), { statusCode: 409 });
+    }
     const dateStr = new Date().toISOString();
     const lines: QuotationLineInput[] = enq.lines.map((l) => ({
       itemId: l.itemId, description: l.description, uomId: l.uomId, qty: Number(l.qty),

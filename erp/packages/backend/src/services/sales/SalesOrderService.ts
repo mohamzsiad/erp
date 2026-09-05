@@ -14,6 +14,10 @@ export interface OrderLineInput {
   discountPct?: number;
   taxCodeId?: string | null;
   requestedDate?: string | null;
+  // Stock reservation captured on the line
+  reservedQty?: number;
+  reserveWarehouseId?: string | null;
+  reserveUntil?: string | null;
 }
 
 export interface CreateOrderInput {
@@ -27,10 +31,16 @@ export interface CreateOrderInput {
   billToAddressId?: string | null;
   shipToAddressId?: string | null;
   salespersonId?: string | null;
+  salesmanId?: string | null;
   paymentTerms?: string | null;
+  paymentTermId?: string | null;
+  currencyId?: string | null;
+  exchangeRate?: number;
+  locationId?: string | null;
   warehouseId?: string | null;
   notes?: string | null;
-  lines: OrderLineInput[];
+  /** Optional at creation — the header is saved first, then lines are added. */
+  lines?: OrderLineInput[];
 }
 
 export type UpdateOrderInput = Partial<Omit<CreateOrderInput, 'companyId'>>;
@@ -83,21 +93,62 @@ export function needsApproval(orderValue: number, soApprovalRequired: boolean, a
 export function outstandingReservations(order: {
   orderType: string;
   warehouseId: string | null;
-  lines: Array<{ itemId: string; orderedQty: number | string; deliveredQty?: number | string }>;
+  lines: Array<{ itemId: string; orderedQty: number | string; deliveredQty?: number | string; reservedQty?: number | string }>;
 }): Array<{ itemId: string; qty: number }> {
   if (!['STOCK', 'DIRECT'].includes(order.orderType) || !order.warehouseId) return [];
   const out: Array<{ itemId: string; qty: number }> = [];
   for (const l of order.lines) {
-    const qty = Number(l.orderedQty) - Number(l.deliveredQty ?? 0);
+    // Whatever the line already holds explicitly is not reserved again on approval.
+    const qty = Number(l.orderedQty) - Number(l.deliveredQty ?? 0) - Number(l.reservedQty ?? 0);
     if (qty > 0) out.push({ itemId: l.itemId, qty });
   }
   return out;
+}
+
+export interface ReservationRequest {
+  itemId: string;
+  warehouseId: string;
+  qty: number;
+}
+
+/**
+ * Free (available-to-promise) stock given a balance row: what is on hand less
+ * what is already reserved, never below zero.
+ */
+export function freeStock(onHand: number, reserved: number): number {
+  return Math.max(0, onHand - reserved);
+}
+
+/**
+ * Validates an explicit line reservation against free stock, excluding whatever
+ * this line already holds (so editing a reservation upward only needs the delta).
+ */
+export function evaluateReservation(args: {
+  requestedQty: number;
+  orderedQty: number;
+  currentlyReserved: number;
+  onHand: number;
+  reservedByOthers: number;
+  allowNegativeStock: boolean;
+}): { ok: boolean; delta: number; available: number; reason?: string } {
+  const available = freeStock(args.onHand, args.reservedByOthers);
+  const delta = args.requestedQty - args.currentlyReserved;
+  if (args.requestedQty < 0) return { ok: false, delta, available, reason: 'Reservation quantity cannot be negative' };
+  if (args.requestedQty > args.orderedQty) {
+    return { ok: false, delta, available, reason: `Cannot reserve ${args.requestedQty} against an ordered quantity of ${args.orderedQty}` };
+  }
+  if (delta > 0 && delta > available && !args.allowNegativeStock) {
+    return { ok: false, delta, available, reason: `Only ${available} available to reserve in this warehouse` };
+  }
+  return { ok: true, delta, available };
 }
 
 function notFound(msg = 'Sales order not found') { return Object.assign(new Error(msg), { statusCode: 404 }); }
 function toDate(v?: string | null): Date | null { return v ? new Date(v) : null; }
 const OPEN_ORDER_STATUSES = ['PENDING_APPROVAL', 'APPROVED', 'CREDIT_HOLD', 'IN_PROGRESS'] as const;
 const RESERVED_STATUSES = ['APPROVED', 'IN_PROGRESS'];
+// Anything past DRAFT is closed off rather than cancelled.
+const SHORT_CLOSEABLE = ['PENDING_APPROVAL', 'CREDIT_HOLD', 'APPROVED', 'IN_PROGRESS', 'DELIVERED'];
 
 export class SalesOrderService {
   private pricing: SalesPricingService;
@@ -155,43 +206,161 @@ export class SalesOrderService {
       where: { id, companyId },
       include: {
         customer: { select: { id: true, code: true, name: true } },
-        lines: { orderBy: { lineNo: 'asc' }, include: { item: { select: { code: true, description: true } }, uom: { select: { code: true } } } },
+        salesman: { select: { id: true, code: true, name: true } },
+        paymentTerm: { select: { id: true, code: true, name: true } },
+        currency: { select: { id: true, code: true, name: true } },
+        location: { select: { id: true, code: true, name: true } },
+        lines: {
+          orderBy: { lineNo: 'asc' },
+          include: {
+            item: { select: { code: true, description: true, reservationAllowed: true } },
+            uom: { select: { code: true } },
+            reserveWarehouse: { select: { id: true, code: true, name: true } },
+          },
+        },
       },
     });
     if (!o) throw notFound();
-    return { ...o, subTotal: Number(o.subTotal), discountAmount: Number(o.discountAmount), taxAmount: Number(o.taxAmount), totalAmount: Number(o.totalAmount) };
+    return {
+      ...o,
+      subTotal: Number(o.subTotal),
+      discountAmount: Number(o.discountAmount),
+      taxAmount: Number(o.taxAmount),
+      totalAmount: Number(o.totalAmount),
+      exchangeRate: Number(o.exchangeRate),
+      salesmanName: o.salesman ? `${o.salesman.code} — ${o.salesman.name}` : null,
+      currencyCode: o.currency?.code ?? null,
+      locationName: o.location ? `${o.location.code} — ${o.location.name}` : null,
+      lines: o.lines.map((l) => ({
+        ...l,
+        orderedQty: Number(l.orderedQty),
+        deliveredQty: Number(l.deliveredQty),
+        invoicedQty: Number(l.invoicedQty),
+        unitPrice: Number(l.unitPrice),
+        discountPct: Number(l.discountPct),
+        netAmount: Number(l.netAmount),
+        reservedQty: Number(l.reservedQty),
+        reserveWarehouseCode: l.reserveWarehouse?.code ?? null,
+        reservationAllowed: l.item?.reservationAllowed ?? false,
+      })),
+    };
   }
 
+  /**
+   * Stock position for an item: the selected warehouse on its own, plus the
+   * group total across every warehouse in the company. Feeds the two stock
+   * columns on the order line.
+   */
+  async itemStock(companyId: string, itemId: string, warehouseId?: string | null) {
+    const warehouses = await this.prisma.warehouse.findMany({
+      where: { companyId, isActive: true },
+      select: { id: true, code: true, name: true },
+      orderBy: { code: 'asc' },
+    });
+    const balances = await this.prisma.stockBalance.findMany({
+      where: { itemId, warehouseId: { in: warehouses.map((w) => w.id) }, binId: null },
+      select: { warehouseId: true, qtyOnHand: true, qtyReserved: true },
+    });
+    const byWarehouse = warehouses.map((w) => {
+      const b = balances.find((x) => x.warehouseId === w.id);
+      const onHand = Number(b?.qtyOnHand ?? 0);
+      const reserved = Number(b?.qtyReserved ?? 0);
+      return { warehouseId: w.id, warehouseCode: w.code, warehouseName: w.name, onHand, reserved, available: freeStock(onHand, reserved) };
+    });
+    const selected = warehouseId ? byWarehouse.find((w) => w.warehouseId === warehouseId) ?? null : null;
+    return {
+      itemId,
+      warehouseId: warehouseId ?? null,
+      warehouseOnHand: selected?.onHand ?? 0,
+      warehouseReserved: selected?.reserved ?? 0,
+      warehouseAvailable: selected?.available ?? 0,
+      groupOnHand: byWarehouse.reduce((s, w) => s + w.onHand, 0),
+      groupReserved: byWarehouse.reduce((s, w) => s + w.reserved, 0),
+      groupAvailable: byWarehouse.reduce((s, w) => s + w.available, 0),
+      byWarehouse,
+    };
+  }
+
+  /**
+   * Prices every line from the price list. The rate is never taken from the
+   * request: an item with no price simply comes through at 0, which is what the
+   * business asked for rather than letting a user type their own rate.
+   */
   private async priceLines(companyId: string, customerId: string, dateStr: string, lines: OrderLineInput[]) {
     const priced = [];
     for (const l of lines) {
-      let unitPrice = l.unitPrice ?? null;
-      if (unitPrice == null) {
-        const r = await this.resolver.resolvePrice({ companyId, customerId, itemId: l.itemId, uomId: l.uomId, date: dateStr });
-        unitPrice = r.unitPrice ?? 0;
-      }
+      const r = await this.resolver.resolvePrice({ companyId, customerId, itemId: l.itemId, uomId: l.uomId, date: dateStr });
+      const unitPrice = r.unitPrice ?? 0;
       priced.push({ itemId: l.itemId, description: l.description ?? null, uomId: l.uomId, orderedQty: l.orderedQty, unitPrice, discountPct: l.discountPct ?? 0, taxCodeId: l.taxCodeId ?? null, requestedDate: l.requestedDate ?? null });
     }
     const totals = await this.pricing.computeForLines(companyId, priced.map((l) => ({ qty: l.orderedQty, unitPrice: l.unitPrice, discountPct: l.discountPct, taxCodeId: l.taxCodeId })));
     return { priced, totals };
   }
 
+  /**
+   * Commercial terms spooled off the customer master (company-terms row first,
+   * then the customer header) so the order carries the right payment terms,
+   * currency, salesman and price list without the user retyping them.
+   */
+  async spoolCustomerDefaults(companyId: string, customerId: string) {
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId },
+      include: {
+        paymentTerm: { select: { id: true, name: true } },
+        currency: { select: { id: true, code: true } },
+        addresses: { select: { id: true, type: true, isDefault: true } },
+        currencies: { select: { currencyId: true, isDefault: true } },
+        companyTerms: { where: { companyId }, include: { paymentTerm: { select: { id: true, name: true } } } },
+      },
+    });
+    if (!customer) throw Object.assign(new Error('Customer not found'), { statusCode: 422 });
+    const t = customer.companyTerms[0] ?? null;
+    const billTo = customer.addresses.find((a) => a.type === 'BILL_TO' && a.isDefault) ?? customer.addresses.find((a) => a.type === 'BILL_TO');
+    const shipTo = customer.addresses.find((a) => a.type === 'SHIP_TO' && a.isDefault) ?? customer.addresses.find((a) => a.type === 'SHIP_TO');
+    return {
+      paymentTermId: t?.paymentTermId ?? customer.paymentTermId ?? null,
+      paymentTerms: t?.paymentTerm?.name ?? customer.paymentTerm?.name ?? customer.paymentTerms ?? null,
+      currencyId: customer.currencyId ?? customer.currencies.find((c) => c.isDefault)?.currencyId ?? null,
+      currencyCode: customer.currency?.code ?? null,
+      allowedCurrencyIds: customer.currencies.map((c) => c.currencyId),
+      salesmanId: t?.salesmanId ?? customer.salesmanId ?? null,
+      priceListId: t?.priceListId ?? customer.priceListId ?? null,
+      billToAddressId: billTo?.id ?? null,
+      shipToAddressId: shipTo?.id ?? null,
+      creditHold: customer.creditHold,
+      isBlackListed: t?.isBlackListed ?? false,
+    };
+  }
+
   async create(input: CreateOrderInput, userId: string) {
-    const { priced, totals } = await this.priceLines(input.companyId, input.customerId, input.orderDate, input.lines);
+    // The customer master drives the commercial terms; anything sent explicitly wins.
+    const spooled = await this.spoolCustomerDefaults(input.companyId, input.customerId);
+    const lines = input.lines ?? [];
+    const { priced, totals } = await this.priceLines(input.companyId, input.customerId, input.orderDate, lines);
     const docNo = await getNextDocNo(this.prisma, input.companyId, 'SALES', 'SOL');
     const order = await this.prisma.salesOrder.create({
       data: {
         companyId: input.companyId, docNo, customerId: input.customerId, quotationId: input.quotationId ?? null, contractId: input.contractId ?? null,
         orderType: (input.orderType ?? 'STOCK') as any, orderDate: toDate(input.orderDate)!, requestedDate: toDate(input.requestedDate),
-        billToAddressId: input.billToAddressId ?? null, shipToAddressId: input.shipToAddressId ?? null, salespersonId: input.salespersonId ?? null,
-        paymentTerms: input.paymentTerms ?? null, warehouseId: input.warehouseId ?? null, notes: input.notes ?? null, status: 'DRAFT',
+        billToAddressId: input.billToAddressId ?? spooled.billToAddressId,
+        shipToAddressId: input.shipToAddressId ?? spooled.shipToAddressId,
+        salespersonId: input.salespersonId ?? null,
+        salesmanId: input.salesmanId ?? spooled.salesmanId,
+        paymentTerms: input.paymentTerms ?? spooled.paymentTerms,
+        paymentTermId: input.paymentTermId ?? spooled.paymentTermId,
+        currencyId: input.currencyId ?? spooled.currencyId,
+        exchangeRate: new Prisma.Decimal(input.exchangeRate ?? 1),
+        locationId: input.locationId ?? null,
+        warehouseId: input.warehouseId ?? null, notes: input.notes ?? null, status: 'DRAFT',
         subTotal: new Prisma.Decimal(totals.subTotal), discountAmount: new Prisma.Decimal(totals.discountAmount),
         taxAmount: new Prisma.Decimal(totals.taxAmount), totalAmount: new Prisma.Decimal(totals.totalAmount), createdById: userId,
-        lines: { createMany: { data: priced.map((l, i) => ({
-          itemId: l.itemId, description: l.description, uomId: l.uomId, orderedQty: new Prisma.Decimal(l.orderedQty),
-          unitPrice: new Prisma.Decimal(l.unitPrice), discountPct: new Prisma.Decimal(l.discountPct), taxCodeId: l.taxCodeId,
-          netAmount: new Prisma.Decimal(totals.lines[i].netAmount), requestedDate: toDate(l.requestedDate), lineNo: i + 1,
-        })) } },
+        lines: priced.length
+          ? { createMany: { data: priced.map((l, i) => ({
+              itemId: l.itemId, description: l.description, uomId: l.uomId, orderedQty: new Prisma.Decimal(l.orderedQty),
+              unitPrice: new Prisma.Decimal(l.unitPrice), discountPct: new Prisma.Decimal(l.discountPct), taxCodeId: l.taxCodeId,
+              netAmount: new Prisma.Decimal(totals.lines[i].netAmount), requestedDate: toDate(l.requestedDate), lineNo: i + 1,
+            })) } }
+          : undefined,
       },
     });
     await this.audit('CREATE', order.id, userId, { docNo });
@@ -199,15 +368,27 @@ export class SalesOrderService {
   }
 
   async update(id: string, companyId: string, input: UpdateOrderInput, userId: string) {
-    const existing = await this.prisma.salesOrder.findFirst({ where: { id, companyId } });
+    const existing = await this.prisma.salesOrder.findFirst({ where: { id, companyId }, include: { lines: true } });
     if (!existing) throw notFound();
     if (existing.status !== 'DRAFT') throw Object.assign(new Error('Only DRAFT orders can be edited'), { statusCode: 409 });
+    // Once the header is saved the document number is issued against this
+    // customer, so the customer is frozen for the life of the order.
+    if (input.customerId && input.customerId !== existing.customerId) {
+      throw Object.assign(
+        new Error('The customer cannot be changed once the order header is saved — cancel this order and raise a new one'),
+        { statusCode: 409 }
+      );
+    }
 
     await this.prisma.$transaction(async (tx) => {
-      const header: Prisma.SalesOrderUpdateInput = {
+      const header: Prisma.SalesOrderUncheckedUpdateInput = {
         requestedDate: input.requestedDate !== undefined ? toDate(input.requestedDate) : undefined,
         billToAddressId: input.billToAddressId, shipToAddressId: input.shipToAddressId, salespersonId: input.salespersonId,
-        paymentTerms: input.paymentTerms, warehouseId: input.warehouseId, notes: input.notes,
+        salesmanId: input.salesmanId, paymentTerms: input.paymentTerms, paymentTermId: input.paymentTermId,
+        currencyId: input.currencyId,
+        exchangeRate: input.exchangeRate !== undefined ? new Prisma.Decimal(input.exchangeRate) : undefined,
+        locationId: input.locationId,
+        warehouseId: input.warehouseId, notes: input.notes,
         orderType: input.orderType as any,
       };
       if (input.lines !== undefined) {
@@ -216,12 +397,32 @@ export class SalesOrderService {
         const { priced, totals } = await this.priceLines(companyId, customerId, dateStr, input.lines);
         header.subTotal = new Prisma.Decimal(totals.subTotal); header.discountAmount = new Prisma.Decimal(totals.discountAmount);
         header.taxAmount = new Prisma.Decimal(totals.taxAmount); header.totalAmount = new Prisma.Decimal(totals.totalAmount);
+        // Lines are replaced wholesale; carry any reservation already blocked in
+        // the warehouse across to the matching new line so stock is not orphaned.
+        const held = new Map(existing.lines.map((l) => [`${l.itemId}|${l.uomId}`, l]));
         await tx.salesOrderLine.deleteMany({ where: { orderId: id } });
-        await tx.salesOrderLine.createMany({ data: priced.map((l, i) => ({
-          orderId: id, itemId: l.itemId, description: l.description, uomId: l.uomId, orderedQty: new Prisma.Decimal(l.orderedQty),
-          unitPrice: new Prisma.Decimal(l.unitPrice), discountPct: new Prisma.Decimal(l.discountPct), taxCodeId: l.taxCodeId,
-          netAmount: new Prisma.Decimal(totals.lines[i].netAmount), requestedDate: toDate(l.requestedDate), lineNo: i + 1,
-        })) });
+        await tx.salesOrderLine.createMany({ data: priced.map((l, i) => {
+          const prev = held.get(`${l.itemId}|${l.uomId}`);
+          const carried = Math.min(Number(prev?.reservedQty ?? 0), l.orderedQty);
+          return {
+            orderId: id, itemId: l.itemId, description: l.description, uomId: l.uomId, orderedQty: new Prisma.Decimal(l.orderedQty),
+            unitPrice: new Prisma.Decimal(l.unitPrice), discountPct: new Prisma.Decimal(l.discountPct), taxCodeId: l.taxCodeId,
+            netAmount: new Prisma.Decimal(totals.lines[i].netAmount), requestedDate: toDate(l.requestedDate),
+            reservedQty: new Prisma.Decimal(carried),
+            reserveWarehouseId: carried > 0 ? prev?.reserveWarehouseId ?? null : null,
+            reserveUntil: carried > 0 ? prev?.reserveUntil ?? null : null,
+            lineNo: i + 1,
+          };
+        }) });
+        // Release any reservation that no longer has a line to sit on.
+        for (const prev of existing.lines) {
+          const stillThere = priced.find((l) => l.itemId === prev.itemId && l.uomId === prev.uomId);
+          const keptQty = stillThere ? Math.min(Number(prev.reservedQty), stillThere.orderedQty) : 0;
+          const drop = Number(prev.reservedQty) - keptQty;
+          if (drop > 0 && prev.reserveWarehouseId) {
+            await this.adjustReserved(tx, prev.itemId, prev.reserveWarehouseId, -drop);
+          }
+        }
       }
       await tx.salesOrder.update({ where: { id }, data: header });
     });
@@ -231,8 +432,12 @@ export class SalesOrderService {
 
   // ── Credit status (from AR + open orders) ──────────────────────────────────
   async creditStatus(companyId: string, customerId: string, excludeOrderId?: string) {
-    const customer = await this.prisma.customer.findFirst({ where: { id: customerId, companyId }, select: { creditLimit: true } });
-    const creditLimit = Number(customer?.creditLimit ?? 0);
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, companyId },
+      select: { creditLimit: true, companyTerms: { where: { companyId }, select: { creditLimit: true } } },
+    });
+    // The limit is maintained per company on the customer's Companies grid.
+    const creditLimit = Number(customer?.companyTerms[0]?.creditLimit ?? customer?.creditLimit ?? 0);
     const invoices = await this.prisma.arInvoice.findMany({ where: { companyId, customerId }, select: { totalAmount: true, paidAmount: true, dueDate: true, status: true } });
     const today = new Date();
     let outstanding = 0, overdue = 0;
@@ -256,6 +461,7 @@ export class SalesOrderService {
     const order = await this.prisma.salesOrder.findFirst({ where: { id, companyId }, include: { lines: true } });
     if (!order) throw notFound();
     if (order.status !== 'DRAFT') throw Object.assign(new Error('Only DRAFT orders can be confirmed'), { statusCode: 409 });
+    if (!order.lines.length) throw Object.assign(new Error('Add at least one item line before confirming'), { statusCode: 422 });
 
     const cfg = await this.config(companyId);
     const orderValue = Number(order.totalAmount);
@@ -327,12 +533,24 @@ export class SalesOrderService {
     return this.getById(id, companyId);
   }
 
+  /**
+   * Cancelling is reserved for a draft that never went anywhere. Once an order
+   * has been confirmed or part-delivered it is short-closed instead, so the
+   * delivered quantity and its history are preserved.
+   */
   async cancel(id: string, companyId: string, userId: string, reason?: string) {
     const order = await this.prisma.salesOrder.findFirst({ where: { id, companyId }, include: { lines: true } });
     if (!order) throw notFound();
     if (['CLOSED', 'CANCELLED'].includes(order.status)) throw Object.assign(new Error('Order already closed/cancelled'), { statusCode: 409 });
+    if (order.status !== 'DRAFT') {
+      throw Object.assign(new Error('Only a DRAFT order can be cancelled — short-close it instead'), { statusCode: 409 });
+    }
+    if (order.lines.some((l) => Number(l.deliveredQty) > 0)) {
+      throw Object.assign(new Error('This order has deliveries against it — short-close it instead'), { statusCode: 409 });
+    }
     await this.prisma.$transaction(async (tx) => {
       if (RESERVED_STATUSES.includes(order.status)) await this.releaseReservation(tx, order);
+      await this.releaseLineReservations(tx, order.lines);
       await tx.salesOrder.update({ where: { id }, data: { status: 'CANCELLED', notes: reason ? `${order.notes ?? ''}\nCancelled: ${reason}` : order.notes } });
     });
     await this.audit('UPDATE', id, userId, { action: 'cancel', reason });
@@ -343,28 +561,156 @@ export class SalesOrderService {
   async shortClose(id: string, companyId: string, userId: string) {
     const order = await this.prisma.salesOrder.findFirst({ where: { id, companyId }, include: { lines: true } });
     if (!order) throw notFound();
-    if (!RESERVED_STATUSES.includes(order.status)) throw Object.assign(new Error('Only active orders can be short-closed'), { statusCode: 409 });
+    if (!SHORT_CLOSEABLE.includes(order.status)) {
+      throw Object.assign(new Error('Only a confirmed or active order can be short-closed'), { statusCode: 409 });
+    }
     await this.prisma.$transaction(async (tx) => {
       await this.releaseReservation(tx, order);
+      await this.releaseLineReservations(tx, order.lines);
       await tx.salesOrder.update({ where: { id }, data: { status: 'CLOSED' } });
     });
     await this.audit('UPDATE', id, userId, { action: 'short-close' });
     return this.getById(id, companyId);
   }
 
+  // ── Explicit line reservations ─────────────────────────────────────────────
+  /**
+   * Blocks (or re-sizes) warehouse stock for one order line. The reservation is
+   * independent of approval — it exists so a line can be held against an advance
+   * payment — and may sit in a warehouse other than the order's when the order's
+   * own warehouse is short.
+   */
+  async reserveLine(
+    id: string,
+    lineId: string,
+    companyId: string,
+    input: { qty: number; warehouseId?: string | null; reserveUntil?: string | null },
+    userId: string
+  ) {
+    const order = await this.prisma.salesOrder.findFirst({ where: { id, companyId }, include: { lines: true } });
+    if (!order) throw notFound();
+    if (['CLOSED', 'CANCELLED'].includes(order.status)) {
+      throw Object.assign(new Error('Stock cannot be reserved on a closed or cancelled order'), { statusCode: 409 });
+    }
+    const line = order.lines.find((l) => l.id === lineId);
+    if (!line) throw notFound('Order line not found');
+
+    const item = await this.prisma.item.findFirst({
+      where: { id: line.itemId, companyId },
+      select: { code: true, description: true, reservationAllowed: true },
+    });
+    if (!item?.reservationAllowed) {
+      throw Object.assign(
+        new Error(`Item ${item?.code ?? ''} is not flagged "reservation allowed" in the item master`),
+        { statusCode: 422 }
+      );
+    }
+
+    const targetWarehouseId = input.warehouseId ?? line.reserveWarehouseId ?? order.warehouseId;
+    if (!targetWarehouseId) throw Object.assign(new Error('Select a warehouse to reserve from'), { statusCode: 422 });
+    const wh = await this.prisma.warehouse.findFirst({ where: { id: targetWarehouseId, companyId }, select: { id: true } });
+    if (!wh) throw Object.assign(new Error('Warehouse not found'), { statusCode: 422 });
+
+    const cfg = await this.config(companyId);
+    const movingWarehouse = !!line.reserveWarehouseId && line.reserveWarehouseId !== targetWarehouseId;
+    const currentlyReserved = movingWarehouse ? 0 : Number(line.reservedQty);
+
+    const bal = await this.prisma.stockBalance.findFirst({
+      where: { itemId: line.itemId, warehouseId: targetWarehouseId, binId: null },
+      select: { qtyOnHand: true, qtyReserved: true },
+    });
+    const onHand = Number(bal?.qtyOnHand ?? 0);
+    const reservedByOthers = Number(bal?.qtyReserved ?? 0) - currentlyReserved;
+
+    const verdict = evaluateReservation({
+      requestedQty: input.qty,
+      orderedQty: Number(line.orderedQty),
+      currentlyReserved,
+      onHand,
+      reservedByOthers,
+      allowNegativeStock: cfg.ALLOW_NEGATIVE_STOCK,
+    });
+    if (!verdict.ok) throw Object.assign(new Error(verdict.reason!), { statusCode: 422 });
+
+    await this.prisma.$transaction(async (tx) => {
+      // Moving warehouses releases the old hold in full before taking the new one.
+      if (movingWarehouse && Number(line.reservedQty) > 0) {
+        await this.adjustReserved(tx, line.itemId, line.reserveWarehouseId!, -Number(line.reservedQty));
+      }
+      if (verdict.delta !== 0) await this.adjustReserved(tx, line.itemId, targetWarehouseId, verdict.delta);
+      await tx.salesOrderLine.update({
+        where: { id: lineId },
+        data: {
+          reservedQty: new Prisma.Decimal(input.qty),
+          reserveWarehouseId: input.qty > 0 ? targetWarehouseId : null,
+          reserveUntil: input.qty > 0 ? toDate(input.reserveUntil ?? null) : null,
+        },
+      });
+    });
+
+    await this.audit('UPDATE', id, userId, { action: 'reserve-line', lineId, qty: input.qty, warehouseId: targetWarehouseId });
+    return this.getById(id, companyId);
+  }
+
+  /** Releases the whole reservation held by one line. */
+  async releaseLine(id: string, lineId: string, companyId: string, userId: string) {
+    return this.reserveLine(id, lineId, companyId, { qty: 0 }, userId);
+  }
+
+  /**
+   * Releases reservations whose reserve-until date has passed, freeing the stock
+   * for other orders. Called before any availability read so the numbers shown
+   * are never inflated by stale holds.
+   */
+  async releaseExpiredReservations(companyId: string, asOf = new Date()): Promise<number> {
+    const today = new Date(asOf.getFullYear(), asOf.getMonth(), asOf.getDate());
+    const expired = await this.prisma.salesOrderLine.findMany({
+      where: {
+        reservedQty: { gt: 0 },
+        reserveUntil: { lt: today },
+        order: { companyId, status: { notIn: ['CLOSED', 'CANCELLED'] } },
+      },
+      select: { id: true, itemId: true, reservedQty: true, reserveWarehouseId: true },
+    });
+    if (!expired.length) return 0;
+    await this.prisma.$transaction(async (tx) => {
+      for (const l of expired) {
+        if (l.reserveWarehouseId) await this.adjustReserved(tx, l.itemId, l.reserveWarehouseId, -Number(l.reservedQty));
+        await tx.salesOrderLine.update({
+          where: { id: l.id },
+          data: { reservedQty: new Prisma.Decimal(0), reserveWarehouseId: null, reserveUntil: null },
+        });
+      }
+    });
+    return expired.length;
+  }
+
   // ── Available-to-Promise per line ──────────────────────────────────────────
   async availability(id: string, companyId: string) {
+    await this.releaseExpiredReservations(companyId);
     const order = await this.prisma.salesOrder.findFirst({ where: { id, companyId }, include: { lines: true } });
     if (!order) throw notFound();
     const wh = order.warehouseId;
     const out = [];
     for (const l of order.lines) {
-      let onHand = 0, reserved = 0;
-      if (wh) {
-        const bal = await this.prisma.stockBalance.findFirst({ where: { itemId: l.itemId, warehouseId: wh, binId: null }, select: { qtyOnHand: true, qtyReserved: true } });
-        onHand = Number(bal?.qtyOnHand ?? 0); reserved = Number(bal?.qtyReserved ?? 0);
-      }
-      out.push({ lineId: l.id, itemId: l.itemId, orderedQty: Number(l.orderedQty), onHand, reserved, availableToPromise: onHand - reserved });
+      // Stock in the line's own warehouse (its reservation warehouse when it has
+      // one, otherwise the order's), plus the group total across the company.
+      const lineWh = l.reserveWarehouseId ?? wh;
+      const stock = await this.itemStock(companyId, l.itemId, lineWh);
+      out.push({
+        lineId: l.id,
+        itemId: l.itemId,
+        orderedQty: Number(l.orderedQty),
+        warehouseId: lineWh,
+        onHand: stock.warehouseOnHand,
+        reserved: stock.warehouseReserved,
+        availableToPromise: stock.warehouseAvailable,
+        groupOnHand: stock.groupOnHand,
+        groupAvailable: stock.groupAvailable,
+        reservedQty: Number(l.reservedQty),
+        reserveWarehouseId: l.reserveWarehouseId,
+        reserveUntil: l.reserveUntil,
+      });
     }
     return { orderId: id, warehouseId: wh, lines: out };
   }
@@ -387,6 +733,32 @@ export class SalesOrderService {
     for (const r of outstandingReservations(order)) {
       const bal = await tx.stockBalance.findFirst({ where: { itemId: r.itemId, warehouseId: order.warehouseId!, binId: null } });
       if (bal) await tx.stockBalance.update({ where: { id: bal.id }, data: { qtyReserved: { decrement: r.qty } } });
+    }
+  }
+
+  /** Releases every explicit line reservation on an order (cancel / short-close). */
+  private async releaseLineReservations(tx: Prisma.TransactionClient, lines: any[]) {
+    for (const l of lines) {
+      const qty = Number(l.reservedQty ?? 0);
+      if (qty > 0 && l.reserveWarehouseId) {
+        await this.adjustReserved(tx, l.itemId, l.reserveWarehouseId, -qty);
+        await tx.salesOrderLine.update({
+          where: { id: l.id },
+          data: { reservedQty: new Prisma.Decimal(0), reserveWarehouseId: null, reserveUntil: null },
+        });
+      }
+    }
+  }
+
+  /** Moves qtyReserved on a warehouse stock balance, creating the row if needed. */
+  private async adjustReserved(tx: Prisma.TransactionClient, itemId: string, warehouseId: string, delta: number) {
+    if (delta === 0) return;
+    const bal = await tx.stockBalance.findFirst({ where: { itemId, warehouseId, binId: null } });
+    if (bal) {
+      const next = Math.max(0, Number(bal.qtyReserved) + delta);
+      await tx.stockBalance.update({ where: { id: bal.id }, data: { qtyReserved: new Prisma.Decimal(next) } });
+    } else if (delta > 0) {
+      await tx.stockBalance.create({ data: { itemId, warehouseId, binId: null, qtyOnHand: 0, qtyReserved: new Prisma.Decimal(delta), avgCost: 0 } });
     }
   }
 

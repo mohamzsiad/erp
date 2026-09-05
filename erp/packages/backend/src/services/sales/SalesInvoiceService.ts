@@ -92,14 +92,28 @@ export class SalesInvoiceService {
     const inv = await this.prisma.salesInvoice.findFirst({
       where: { id, companyId },
       include: {
-        customer: { select: { id: true, code: true, name: true, trn: true } },
+        customer: {
+          select: {
+            id: true, code: true, name: true, trn: true,
+            // VAT / CR registration is held per address (bill-to preferred).
+            addresses: {
+              where: { type: 'BILL_TO' },
+              orderBy: { isDefault: 'desc' },
+              take: 1,
+              select: { vatNo: true, crNo: true },
+            },
+          },
+        },
         lines: { orderBy: { lineNo: 'asc' }, include: { item: { select: { code: true, description: true } }, uom: { select: { code: true } }, taxCode: { select: { code: true, rate: true } } } },
       },
     });
     if (!inv) throw notFound();
+    const billTo = inv.customer?.addresses?.[0];
     return {
       ...inv, subTotal: Number(inv.subTotal), discountAmount: Number(inv.discountAmount), amount: Number(inv.amount),
       taxAmount: Number(inv.taxAmount), totalAmount: Number(inv.totalAmount), paidAmount: Number(inv.paidAmount),
+      customerVatNo: billTo?.vatNo ?? inv.customer?.trn ?? null,
+      customerCrNo: billTo?.crNo ?? null,
     };
   }
 

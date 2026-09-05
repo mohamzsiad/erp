@@ -39,6 +39,7 @@ export interface Item extends AuditInfo {
   minStock: number;
   maxStock: number;
   standardCost: number;
+  reservationAllowed?: boolean;
   trackingType: TrackingType;
   status: ItemStatus;
   // Joins
